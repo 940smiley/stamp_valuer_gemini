@@ -1,6 +1,7 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import type { AppSettings } from '../types';
+import { verifyEbayConnection } from '../services/ebayService';
 
 interface SettingsPanelProps {
   settings: AppSettings;
@@ -8,6 +9,8 @@ interface SettingsPanelProps {
 }
 
 const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onUpdate }) => {
+  const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'failed'>('idle');
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target as HTMLInputElement;
     const checked = (e.target as HTMLInputElement).checked;
@@ -16,6 +19,12 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onUpdate }) => 
       ...settings,
       [name]: type === 'checkbox' ? checked : value
     });
+  };
+
+  const handleTestConnection = async () => {
+      setTestStatus('testing');
+      const result = await verifyEbayConnection(settings.ebayApiKey, settings.ebayOAuthToken || '');
+      setTestStatus(result ? 'success' : 'failed');
   };
 
   return (
@@ -30,18 +39,41 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onUpdate }) => 
 
       <div className="space-y-8">
         <section>
-          <h3 className="text-lg font-semibold text-slate-700 mb-4 border-b pb-2">External Integrations</h3>
-          <div>
-            <label className="block text-sm font-medium text-slate-600 mb-1">eBay API Key</label>
-            <input 
-              type="password" 
-              name="ebayApiKey"
-              value={settings.ebayApiKey}
-              onChange={handleChange}
-              placeholder="Enter your eBay Developer Key"
-              className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition shadow-sm"
-            />
-            <p className="mt-1 text-xs text-slate-400">Used for direct auction drafting (optional).</p>
+          <h3 className="text-lg font-semibold text-slate-700 mb-4 border-b pb-2">eBay Integration</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+                <label className="block text-sm font-medium text-slate-600 mb-1">Developer API Key</label>
+                <input 
+                type="password" 
+                name="ebayApiKey"
+                value={settings.ebayApiKey}
+                onChange={handleChange}
+                placeholder="Client ID"
+                className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition shadow-sm"
+                />
+            </div>
+            <div>
+                <label className="block text-sm font-medium text-slate-600 mb-1">OAuth Token</label>
+                <input 
+                type="password" 
+                name="ebayOAuthToken"
+                value={settings.ebayOAuthToken || ''}
+                onChange={handleChange}
+                placeholder="User Access Token"
+                className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition shadow-sm"
+                />
+            </div>
+          </div>
+          
+          <div className="mt-4 flex items-center justify-between">
+             <button 
+                onClick={handleTestConnection} 
+                disabled={testStatus === 'testing' || !settings.ebayApiKey}
+                className={`px-4 py-2 rounded text-sm font-bold transition ${testStatus === 'success' ? 'bg-green-600 text-white' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'}`}
+             >
+                {testStatus === 'testing' ? 'Testing...' : testStatus === 'success' ? 'Connection Verified' : 'Test Connection'}
+             </button>
+             {testStatus === 'failed' && <span className="text-red-500 text-sm font-medium">Connection Failed. Check Credentials.</span>}
           </div>
         </section>
 
