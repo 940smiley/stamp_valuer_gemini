@@ -1,5 +1,5 @@
 {
-  "name": "Stamp Valuer AI",
-  "description": "An easy-to-use application for identifying, logging, and valuing stamps for eBay auctions. Upload a stamp image, and our AI will provide identification details, an estimated value, and a recommendation for whether it should be a singular or lot auction.",
+  "name": "Stamplicity",
+  "description": "Bringing simplicity to stamp collecting, logging, and marketplace listing with the help of Artificial Intelligence. This easy‑to‑use application streamlines the process of identifying, cataloging, and valuing stamps for eBay auctions. Upload a stamp image, and the AI will return detailed identification, an estimated value, and guidance on whether the item is best listed individually or as part of a lot.",
   "requestFramePermissions": []
 }
