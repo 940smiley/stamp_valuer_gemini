@@ -8,7 +8,7 @@ let pickerInited = false;
 let gisInited = false;
 
 // Scopes required for Picker and Downloading files
-const SCOPES = 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/photos.readonly';
+const SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
 
 export const checkGoogleConfig = (clientId?: string, developerKey?: string) => {
     return !!clientId && !!developerKey;
@@ -51,9 +51,9 @@ const waitForInit = async (clientId: string): Promise<void> => {
                 if (!gisInited) initGooglePicker(clientId);
                 attempts++;
                 if (attempts > 20) { // 2 seconds timeout
-                   reject("Google API scripts failed to load. Please check your internet connection."); 
+                    reject("Google API scripts failed to load. Please check your internet connection.");
                 } else {
-                   setTimeout(check, 100);
+                    setTimeout(check, 100);
                 }
             }
         };
@@ -64,7 +64,7 @@ const waitForInit = async (clientId: string): Promise<void> => {
 const getOAuthToken = (clientId: string): Promise<string> => {
     return new Promise((resolve, reject) => {
         if (!tokenClient) initGooglePicker(clientId);
-        
+
         // Trigger the GIS flow to get token
         // We override the callback to capture this specific request
         tokenClient.callback = (resp: any) => {
@@ -74,20 +74,20 @@ const getOAuthToken = (clientId: string): Promise<string> => {
             accessToken = resp.access_token;
             resolve(accessToken!);
         };
-        
+
         // Skip prompt if we have a valid token (handled by GIS automatically mostly, but we can hint)
-        tokenClient.requestAccessToken({ prompt: '' }); 
+        tokenClient.requestAccessToken({ prompt: '' });
     });
 };
 
 export const pickFileFromGoogle = async (
-    source: 'Drive' | 'Photos', 
-    clientId: string, 
+    source: 'Drive' | 'Photos',
+    clientId: string,
     developerKey: string
 ): Promise<File | null> => {
     try {
         await waitForInit(clientId);
-        
+
         // Ensure we have a token
         const token = await getOAuthToken(clientId);
 
@@ -120,7 +120,7 @@ export const pickFileFromGoogle = async (
             };
 
             const viewId = source === 'Photos' ? google.picker.ViewId.PHOTOS : google.picker.ViewId.DOCS_IMAGES;
-            
+
             // Calculate center position or use default behavior with explicit size
             const width = Math.min(1050, window.innerWidth * 0.85);
             const height = Math.min(700, window.innerHeight * 0.85);
@@ -137,7 +137,7 @@ export const pickFileFromGoogle = async (
                     .setSize(width, height) // Set explicit size for better visibility
                     .setCallback(pickerCallback)
                     .build();
-                
+
                 picker.setVisible(true);
             } catch (e) {
                 reject("Failed to construct Google Picker. Please verify Client ID and API Key.");
@@ -153,7 +153,7 @@ export const pickFileFromGoogle = async (
 const downloadFile = async (fileId: string, name: string, mimeType: string, token: string): Promise<File> => {
     // For Drive files, use the API
     const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
-    
+
     const response = await fetch(url, {
         headers: {
             'Authorization': `Bearer ${token}`
