@@ -8,7 +8,7 @@ let pickerInited = false;
 let gisInited = false;
 
 // Scopes required for Picker and Downloading files
-const SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
+const SCOPES = 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/photospicker.mediaitems.readonly';
 
 export const checkGoogleConfig = (clientId?: string, developerKey?: string) => {
     return !!clientId && !!developerKey;
