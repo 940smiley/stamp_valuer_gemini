@@ -1,7 +1,7 @@
 
 import React, { useState, useCallback, useRef } from 'react';
 import { UploadIcon } from './icons';
-import { createDummyStampFile } from '../services/googleService';
+import { pickFileFromGoogle, checkGoogleConfig } from '../services/googleService';
 import Loader from './Loader';
 
 interface StampUploaderProps {
@@ -14,12 +14,17 @@ const StampUploader: React.FC<StampUploaderProps> = ({ onImageUpload, onVideoUpl
   const [preview, setPreview] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
   
-  // Cloud Import State
-  const [cloudModalOpen, setCloudModalOpen] = useState(false);
-  const [cloudSource, setCloudSource] = useState<'Drive' | 'Photos' | null>(null);
+  // Cloud State
   const [isCloudLoading, setIsCloudLoading] = useState(false);
+  const [configError, setConfigError] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Read settings from localStorage to check for Google config (simple solution without prop drilling)
+  const getSettings = () => {
+      const saved = localStorage.getItem('stamp-valuer-settings');
+      return saved ? JSON.parse(saved) : {};
+  };
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0];
@@ -91,28 +96,29 @@ const StampUploader: React.FC<StampUploaderProps> = ({ onImageUpload, onVideoUpl
     }
   };
 
-  // Cloud Simulation Handlers
-  const openCloudModal = (source: 'Drive' | 'Photos') => {
+  // Cloud Picker Handler
+  const handleCloudPick = async (source: 'Drive' | 'Photos') => {
       if (mode === 'video') { alert("Cloud import not supported for video in this version."); return; }
-      setCloudSource(source);
-      setIsCloudLoading(true);
-      setCloudModalOpen(true);
       
-      // Simulate network connection delay
-      setTimeout(() => {
-          setIsCloudLoading(false);
-      }, 1500);
-  };
+      const settings = getSettings();
+      if (!checkGoogleConfig(settings.googleClientId, settings.googleDeveloperKey)) {
+          setConfigError(true);
+          return;
+      }
 
-  const handleCloudSelect = async () => {
-      if (!cloudSource) return;
       setIsCloudLoading(true);
-      const importedFile = await createDummyStampFile(`Google ${cloudSource}`);
-      setFile(importedFile);
-      setPreview(URL.createObjectURL(importedFile));
-      setCloudModalOpen(false);
-      setIsCloudLoading(false);
-      setCloudSource(null);
+      try {
+          const pickedFile = await pickFileFromGoogle(source, settings.googleClientId, settings.googleDeveloperKey);
+          if (pickedFile) {
+              setFile(pickedFile);
+              setPreview(URL.createObjectURL(pickedFile));
+          }
+      } catch (e) {
+          console.error(e);
+          alert("Failed to load file from Google. Please check your credentials and network.");
+      } finally {
+          setIsCloudLoading(false);
+      }
   };
 
   return (
@@ -141,6 +147,13 @@ const StampUploader: React.FC<StampUploaderProps> = ({ onImageUpload, onVideoUpl
           onDrop={handleDrop}
           onClick={triggerFileSelect}
         >
+           {isCloudLoading && (
+              <div className="absolute inset-0 bg-white/80 z-20 flex flex-col items-center justify-center backdrop-blur-sm">
+                  <Loader />
+                  <p className="mt-2 text-slate-600 font-bold animate-pulse">Connecting to Google...</p>
+              </div>
+           )}
+
           <div className="flex flex-col items-center text-slate-500 pointer-events-none">
             {mode === 'image' ? (
                 <UploadIcon className="w-12 h-12 mb-4 text-slate-400 group-hover:text-blue-500 transition-colors" />
@@ -158,18 +171,18 @@ const StampUploader: React.FC<StampUploaderProps> = ({ onImageUpload, onVideoUpl
           >
               <button 
                 type="button"
-                onClick={() => openCloudModal('Drive')} 
+                onClick={() => handleCloudPick('Drive')} 
                 className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 hover:border-blue-300 hover:text-blue-600 hover:shadow-sm text-sm font-bold text-slate-700 transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={mode === 'video'}
+                disabled={mode === 'video' || isCloudLoading}
               >
                  <svg className="w-5 h-5" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg"><path d="m6.6 66.85 3.85 6.65c.8 1.4 1.9 2.5 3.2 3.3l12.3-21.3h-25.3c-.1 1.5.4 3 1.3 4.55zm26.25-45.55 12.3 21.3 12.6-21.8-12.6-21.8c-.8-1.4-1.9-2.5-3.2-3.3l-12.3 21.3zm38.7 6.1-12.6 21.8 13.9 24.1c.9-.5 1.75-1.15 2.45-1.95.7-.8 1.25-1.7 1.6-2.65l10.4-18c.9-1.55.9-3.45 0-5l-3.85-6.65c-.8-1.4-1.9-2.5-3.2-3.3l-8.7-14.35z" fill="currentColor"/></svg>
                  Google Drive
               </button>
               <button 
                 type="button"
-                onClick={() => openCloudModal('Photos')}
+                onClick={() => handleCloudPick('Photos')}
                 className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 hover:border-blue-300 hover:text-blue-600 hover:shadow-sm text-sm font-bold text-slate-700 transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={mode === 'video'}
+                disabled={mode === 'video' || isCloudLoading}
               >
                   <svg className="w-5 h-5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 0a12 12 0 1 0 0 24 12 12 0 0 0 0-24zm-2.42 5.09a3.87 3.87 0 0 1 3.87 3.87c0 .41-.07.8-.19 1.17l1.72-1.72A5.8 5.8 0 0 0 9.58 3.16c-3.2 0-5.81 2.6-5.81 5.81a5.79 5.79 0 0 0 1.05 3.3L3.1 14a7.73 7.73 0 0 1-1.35-4.42c0-4.28 3.47-7.74 7.74-7.74h.09v3.25zm8.9 2.05A7.73 7.73 0 0 1 19.83 11.56c0 4.28-3.47 7.74-7.74 7.74h-.09v-3.25a3.87 3.87 0 0 1-3.87-3.87c0-.41.07-.8.19-1.17l-1.72 1.72A5.8 5.8 0 0 0 12.51 19.34c3.2 0 5.81-2.6 5.81-5.81a5.79 5.79 0 0 0-1.05-3.3L19.06 8.5a7.73 7.73 0 0 1 1.35 4.42z" fill="currentColor"/></svg>
                   Google Photos
@@ -210,41 +223,22 @@ const StampUploader: React.FC<StampUploaderProps> = ({ onImageUpload, onVideoUpl
         </div>
       )}
 
-      {/* Cloud Service Simulation Modal */}
-      {cloudModalOpen && (
+      {/* Missing Config Modal */}
+      {configError && (
           <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4 animate-fade-in">
-              <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden">
-                  <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
-                      <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                          {cloudSource === 'Drive' ? 
-                            <svg className="w-5 h-5 text-slate-600" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg"><path d="m6.6 66.85 3.85 6.65c.8 1.4 1.9 2.5 3.2 3.3l12.3-21.3h-25.3c-.1 1.5.4 3 1.3 4.55zm26.25-45.55 12.3 21.3 12.6-21.8-12.6-21.8c-.8-1.4-1.9-2.5-3.2-3.3l-12.3 21.3zm38.7 6.1-12.6 21.8 13.9 24.1c.9-.5 1.75-1.15 2.45-1.95.7-.8 1.25-1.7 1.6-2.65l10.4-18c.9-1.55.9-3.45 0-5l-3.85-6.65c-.8-1.4-1.9-2.5-3.2-3.3l-8.7-14.35z" fill="currentColor"/></svg> : 
-                            <svg className="w-5 h-5 text-slate-600" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 0a12 12 0 1 0 0 24 12 12 0 0 0 0-24zm-2.42 5.09a3.87 3.87 0 0 1 3.87 3.87c0 .41-.07.8-.19 1.17l1.72-1.72A5.8 5.8 0 0 0 9.58 3.16c-3.2 0-5.81 2.6-5.81 5.81a5.79 5.79 0 0 0 1.05 3.3L3.1 14a7.73 7.73 0 0 1-1.35-4.42c0-4.28 3.47-7.74 7.74-7.74h.09v3.25zm8.9 2.05A7.73 7.73 0 0 1 19.83 11.56c0 4.28-3.47 7.74-7.74 7.74h-.09v-3.25a3.87 3.87 0 0 1-3.87-3.87c0-.41.07-.8.19-1.17l-1.72 1.72A5.8 5.8 0 0 0 12.51 19.34c3.2 0 5.81-2.6 5.81-5.81a5.79 5.79 0 0 0-1.05-3.3L19.06 8.5a7.73 7.73 0 0 1 1.35 4.42z" fill="currentColor"/></svg>
-                          }
-                          Select from Google {cloudSource}
-                      </h3>
-                      <button onClick={() => setCloudModalOpen(false)} className="text-slate-400 hover:text-slate-600">×</button>
+              <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden text-center p-8">
+                  <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                       <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
                   </div>
-                  
-                  <div className="p-8 flex flex-col items-center justify-center min-h-[200px]">
-                      {isCloudLoading ? (
-                          <div className="text-center">
-                              <Loader />
-                              <p className="mt-4 text-slate-600 text-sm font-medium">Connecting to Google {cloudSource}...</p>
-                          </div>
-                      ) : (
-                          <div className="w-full space-y-3">
-                              <p className="text-sm text-slate-500 mb-2">Recent Images (Simulated):</p>
-                              <button onClick={handleCloudSelect} className="w-full flex items-center p-3 border border-slate-200 rounded-lg hover:bg-blue-50 hover:border-blue-300 transition group">
-                                  <div className="w-12 h-12 bg-slate-200 rounded mr-3 flex-shrink-0 overflow-hidden">
-                                      <div className={`w-full h-full ${cloudSource === 'Drive' ? 'bg-blue-200' : 'bg-red-200'}`}></div>
-                                  </div>
-                                  <div className="text-left">
-                                      <p className="font-semibold text-slate-700 text-sm group-hover:text-blue-700">Scan_2023_10_01.jpg</p>
-                                      <p className="text-xs text-slate-400">2.4 MB • Modified Today</p>
-                                  </div>
-                              </button>
-                          </div>
-                      )}
+                  <h3 className="text-xl font-bold text-slate-800 mb-2">Configuration Required</h3>
+                  <p className="text-slate-600 mb-6 text-sm">
+                      To access your files, you must configure your <strong>Google Client ID</strong> and <strong>Developer Key</strong> in the settings.
+                  </p>
+                  <div className="flex justify-center gap-3">
+                      <button onClick={() => setConfigError(false)} className="px-4 py-2 text-slate-500 font-medium hover:bg-slate-100 rounded">Cancel</button>
+                      <button onClick={() => { setConfigError(false); document.querySelector('button[onClick*="settings"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true })); alert("Please go to the Settings tab."); }} className="px-6 py-2 bg-blue-600 text-white font-bold rounded hover:bg-blue-700">
+                          Go to Settings
+                      </button>
                   </div>
               </div>
           </div>

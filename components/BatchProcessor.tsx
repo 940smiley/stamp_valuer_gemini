@@ -12,6 +12,7 @@ interface BatchProcessorProps {
 const BatchProcessor: React.FC<BatchProcessorProps> = ({ settings, onProcessed }) => {
   const [items, setItems] = useState<BatchItem[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isEditing, setIsEditing] = useState(false); // Track bulk edit state
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -92,19 +93,34 @@ const BatchProcessor: React.FC<BatchProcessorProps> = ({ settings, onProcessed }
 
   const applyBatchEdit = async (operation: 'rotateLeft' | 'rotateRight' | 'enhance') => {
       if (selectedItemIds.size === 0) return;
+      setIsEditing(true); // Start loading state
       
       const newItems = [...items];
-      for (let i = 0; i < newItems.length; i++) {
-          if (selectedItemIds.has(newItems[i].id) && newItems[i].status === 'pending') {
-              try {
-                  const newPreview = await processImageOnCanvas(newItems[i].preview, operation);
-                  newItems[i] = { ...newItems[i], preview: newPreview };
-              } catch (e) {
-                  console.error("Failed to edit image", e);
-              }
+      
+      // Process in parallel for speed using Promise.all
+      const updates = items.map(async (item, index) => {
+          if (selectedItemIds.has(item.id) && item.status === 'pending') {
+               try {
+                   const newPreview = await processImageOnCanvas(item.preview, operation);
+                   return { index, preview: newPreview };
+               } catch (e) {
+                   console.error(`Failed to edit item ${index}`, e);
+                   return null;
+               }
           }
-      }
+          return null;
+      });
+
+      const results = await Promise.all(updates);
+      
+      results.forEach(res => {
+          if (res) {
+              newItems[res.index] = { ...newItems[res.index], preview: res.preview };
+          }
+      });
+      
       setItems(newItems);
+      setIsEditing(false); // End loading state
   };
 
   const processBatch = async () => {
@@ -170,7 +186,7 @@ const BatchProcessor: React.FC<BatchProcessorProps> = ({ settings, onProcessed }
           <button 
             onClick={() => fileInputRef.current?.click()}
             className="px-6 py-3 bg-slate-800 text-white rounded-lg font-bold hover:bg-slate-900 transition flex items-center shadow-md"
-            disabled={isProcessing}
+            disabled={isProcessing || isEditing}
           >
             <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
@@ -183,7 +199,7 @@ const BatchProcessor: React.FC<BatchProcessorProps> = ({ settings, onProcessed }
                 <div className="h-8 w-px bg-slate-300 mx-2"></div>
                 <button 
                     onClick={processBatch}
-                    disabled={isProcessing || items.every(i => i.status !== 'pending')}
+                    disabled={isProcessing || isEditing || items.every(i => i.status !== 'pending')}
                     className="px-6 py-3 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition flex items-center shadow-md disabled:bg-slate-400 disabled:cursor-not-allowed"
                 >
                     {isProcessing ? (
@@ -195,7 +211,7 @@ const BatchProcessor: React.FC<BatchProcessorProps> = ({ settings, onProcessed }
                 <button 
                     onClick={() => { setItems([]); setSelectedItemIds(new Set()); }}
                     className="text-red-500 font-semibold hover:underline text-sm ml-auto"
-                    disabled={isProcessing}
+                    disabled={isProcessing || isEditing}
                 >
                     Clear All
                 </button>
@@ -216,7 +232,7 @@ const BatchProcessor: React.FC<BatchProcessorProps> = ({ settings, onProcessed }
       {items.length > 0 && (
           <div className="flex items-center justify-between bg-slate-100 p-2 rounded-lg border border-slate-200">
               <div className="flex items-center gap-4">
-                  <button onClick={selectAll} className="text-sm font-bold text-slate-600 hover:text-blue-600 px-2">
+                  <button onClick={selectAll} className="text-sm font-bold text-slate-600 hover:text-blue-600 px-2" disabled={isEditing || isProcessing}>
                       {selectedItemIds.size === items.length && items.length > 0 ? 'Deselect All' : 'Select All'}
                   </button>
                   <span className="text-xs text-slate-400">|</span>
@@ -225,26 +241,26 @@ const BatchProcessor: React.FC<BatchProcessorProps> = ({ settings, onProcessed }
               <div className="flex gap-2">
                   <button 
                     onClick={() => applyBatchEdit('rotateLeft')} 
-                    disabled={selectedItemIds.size === 0 || isProcessing}
-                    className="p-1.5 bg-white border border-slate-300 rounded hover:bg-slate-50 disabled:opacity-50" 
+                    disabled={selectedItemIds.size === 0 || isProcessing || isEditing}
+                    className="p-1.5 bg-white border border-slate-300 rounded hover:bg-slate-50 disabled:opacity-50 transition" 
                     title="Rotate Left"
                   >
-                      ↺
+                      {isEditing ? '...' : '↺'}
                   </button>
                    <button 
                     onClick={() => applyBatchEdit('rotateRight')} 
-                    disabled={selectedItemIds.size === 0 || isProcessing}
-                    className="p-1.5 bg-white border border-slate-300 rounded hover:bg-slate-50 disabled:opacity-50" 
+                    disabled={selectedItemIds.size === 0 || isProcessing || isEditing}
+                    className="p-1.5 bg-white border border-slate-300 rounded hover:bg-slate-50 disabled:opacity-50 transition" 
                     title="Rotate Right"
                   >
-                      ↻
+                      {isEditing ? '...' : '↻'}
                   </button>
                    <button 
                     onClick={() => applyBatchEdit('enhance')} 
-                    disabled={selectedItemIds.size === 0 || isProcessing}
-                    className="px-3 py-1.5 bg-white border border-slate-300 rounded text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                    disabled={selectedItemIds.size === 0 || isProcessing || isEditing}
+                    className="px-3 py-1.5 bg-white border border-slate-300 rounded text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50 transition"
                   >
-                      Auto-Enhance
+                      {isEditing ? 'Enhancing...' : 'Auto-Enhance'}
                   </button>
               </div>
           </div>
@@ -255,7 +271,7 @@ const BatchProcessor: React.FC<BatchProcessorProps> = ({ settings, onProcessed }
           <div 
             key={item.id} 
             className={`relative bg-white rounded-lg border overflow-hidden group shadow-sm transition-all cursor-pointer ${selectedItemIds.has(item.id) ? 'ring-2 ring-blue-500 border-blue-500' : 'border-slate-200'}`}
-            onClick={() => toggleSelect(item.id)}
+            onClick={() => !isEditing && !isProcessing && toggleSelect(item.id)}
           >
             <div className="absolute top-2 left-2 z-10">
                 <input 
@@ -263,6 +279,7 @@ const BatchProcessor: React.FC<BatchProcessorProps> = ({ settings, onProcessed }
                     checked={selectedItemIds.has(item.id)}
                     onChange={() => {}} // Handled by div click
                     className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 pointer-events-none"
+                    disabled={isEditing || isProcessing}
                 />
             </div>
 

@@ -29,12 +29,14 @@ const StampLog: React.FC<StampLogProps> = ({
     // Advanced Filters
     const [filterCountry, setFilterCountry] = useState('');
     const [filterYear, setFilterYear] = useState('');
-    const [filterCondition, setFilterCondition] = useState('');
+    const [filterCondition, setFilterCondition] = useState('all');
     const [filterAuctionType, setFilterAuctionType] = useState('all');
+    const [filterItemType, setFilterItemType] = useState('all'); // New
     const [filterMinPrice, setFilterMinPrice] = useState('');
     const [filterMaxPrice, setFilterMaxPrice] = useState('');
     const [filterTags, setFilterTags] = useState('');
     const [filterCollection, setFilterCollection] = useState<string>('all');
+    const [filterMintOnly, setFilterMintOnly] = useState(false);
     const [showFilters, setShowFilters] = useState(false);
     
     // Modal States
@@ -42,13 +44,27 @@ const StampLog: React.FC<StampLogProps> = ({
     const [isEbayListing, setIsEbayListing] = useState(false);
     const [isComparing, setIsComparing] = useState(false);
 
+    // Bulk Edit State
     const [bulkForm, setBulkForm] = useState({
         country: '',
         year: '',
         auctionType: '',
         collectionId: '',
         addTags: '',
-        overwriteTags: false // Default to append
+        removeTags: '',
+        renameTagFrom: '',
+        renameTagTo: '',
+        overwriteTags: false
+    });
+    // Track which fields are enabled for bulk edit
+    const [enabledFields, setEnabledFields] = useState<Record<string, boolean>>({
+        country: false,
+        year: false,
+        auctionType: false,
+        collectionId: false,
+        addTags: false,
+        removeTags: false,
+        renameTags: false
     });
 
     const parsePrice = (priceStr: string) => {
@@ -59,15 +75,17 @@ const StampLog: React.FC<StampLogProps> = ({
     const resetFilters = () => {
         setFilterCountry('');
         setFilterYear('');
-        setFilterCondition('');
+        setFilterCondition('all');
         setFilterAuctionType('all');
+        setFilterItemType('all');
         setFilterMinPrice('');
         setFilterMaxPrice('');
         setFilterTags('');
         setFilterCollection('all');
+        setFilterMintOnly(false);
     };
 
-    const hasActiveFilters = filterCountry || filterYear || filterCondition || filterAuctionType !== 'all' || filterMinPrice || filterMaxPrice || filterTags || filterCollection !== 'all';
+    const hasActiveFilters = filterCountry || filterYear || filterCondition !== 'all' || filterAuctionType !== 'all' || filterItemType !== 'all' || filterMinPrice || filterMaxPrice || filterTags || filterCollection !== 'all' || filterMintOnly;
 
     const filteredStamps = useMemo(() => {
         return stamps.filter(s => {
@@ -81,8 +99,16 @@ const StampLog: React.FC<StampLogProps> = ({
             // Advanced Filters
             const matchesCountry = filterCountry ? s.country.toLowerCase().includes(filterCountry.toLowerCase()) : true;
             const matchesYear = filterYear ? s.year.includes(filterYear) : true;
-            const matchesCondition = filterCondition ? s.condition?.toLowerCase().includes(filterCondition.toLowerCase()) : true;
+            
+            // Condition Filtering
+            const condLower = s.condition?.toLowerCase() || '';
+            const matchesCondition = filterCondition === 'all' ? true : condLower.includes(filterCondition.toLowerCase());
+            
+            // Mint Toggle (Specific Shortcut)
+            const matchesMint = filterMintOnly ? (condLower.includes('mint') || condLower.includes('nh') || condLower.includes('unused')) : true;
+
             const matchesAuction = filterAuctionType === 'all' ? true : s.auctionType === filterAuctionType;
+            const matchesItemType = filterItemType === 'all' ? true : s.itemType === filterItemType;
             const matchesCollection = filterCollection === 'all' ? true : s.collectionId === filterCollection;
             
             const price = parsePrice(s.estimatedValue);
@@ -91,9 +117,9 @@ const StampLog: React.FC<StampLogProps> = ({
 
             const matchesTags = filterTags ? s.tags?.some(t => t.toLowerCase().includes(filterTags.toLowerCase())) : true;
 
-            return matchesSearch && matchesCountry && matchesYear && matchesCondition && matchesAuction && matchesCollection && matchesMinPrice && matchesMaxPrice && matchesTags;
+            return matchesSearch && matchesCountry && matchesYear && matchesCondition && matchesMint && matchesAuction && matchesItemType && matchesCollection && matchesMinPrice && matchesMaxPrice && matchesTags;
         });
-    }, [stamps, search, filterCountry, filterYear, filterCondition, filterAuctionType, filterCollection, filterMinPrice, filterMaxPrice, filterTags]);
+    }, [stamps, search, filterCountry, filterYear, filterCondition, filterMintOnly, filterAuctionType, filterItemType, filterCollection, filterMinPrice, filterMaxPrice, filterTags]);
 
     const toggleSelect = (id: number) => {
         const newSet = new Set(selectedIds);
@@ -110,42 +136,108 @@ const StampLog: React.FC<StampLogProps> = ({
         }
     };
 
+    const toggleFieldEnabled = (field: string) => {
+        setEnabledFields(prev => ({ ...prev, [field]: !prev[field] }));
+    };
+
     const handleBulkSave = () => {
-        if (!window.confirm(`Apply changes to ${selectedIds.size} items?`)) return;
+        const fieldsToUpdate = Object.entries(enabledFields).filter(([_, enabled]) => enabled).map(([key]) => key);
+        
+        if (fieldsToUpdate.length === 0) {
+            alert("No fields selected for update.");
+            return;
+        }
+
+        if (!window.confirm(`Are you sure you want to update ${fieldsToUpdate.length} fields for ${selectedIds.size} items? This cannot be undone.`)) {
+            return;
+        }
 
         selectedIds.forEach(id => {
+            const currentStamp = stamps.find(s => s.id === id);
             const updates: any = {};
-            if (bulkForm.country) updates.country = bulkForm.country;
-            if (bulkForm.year) updates.year = bulkForm.year;
-            if (bulkForm.auctionType) updates.auctionType = bulkForm.auctionType;
-            if (bulkForm.collectionId) updates.collectionId = bulkForm.collectionId === 'none' ? undefined : bulkForm.collectionId;
+            if (enabledFields.country) updates.country = bulkForm.country;
+            if (enabledFields.year) updates.year = bulkForm.year;
+            if (enabledFields.auctionType) updates.auctionType = bulkForm.auctionType;
+            if (enabledFields.collectionId) updates.collectionId = bulkForm.collectionId === 'none' ? undefined : bulkForm.collectionId;
             
-            if (bulkForm.addTags) {
-                const currentStamp = stamps.find(s => s.id === id);
-                if (currentStamp) {
-                    const newTags = bulkForm.addTags.split(',').map(t => t.trim()).filter(Boolean);
-                    if (bulkForm.overwriteTags) {
-                        updates.tags = newTags;
-                    } else {
-                        const existingTags = currentStamp.tags || [];
-                        updates.tags = Array.from(new Set([...existingTags, ...newTags]));
-                    }
+            // Tag Logic
+            if (currentStamp) {
+                let currentTags = currentStamp.tags || [];
+                
+                // 1. Rename
+                if (enabledFields.renameTags && bulkForm.renameTagFrom && bulkForm.renameTagTo) {
+                    currentTags = currentTags.map(t => t.toLowerCase() === bulkForm.renameTagFrom.toLowerCase() ? bulkForm.renameTagTo : t);
+                }
+
+                // 2. Remove
+                if (enabledFields.removeTags && bulkForm.removeTags) {
+                    const tagsToRemove = bulkForm.removeTags.split(',').map(t => t.trim().toLowerCase());
+                    currentTags = currentTags.filter(t => !tagsToRemove.includes(t.toLowerCase()));
+                }
+
+                // 3. Add
+                if (enabledFields.addTags && bulkForm.addTags) {
+                     const tagsToAdd = bulkForm.addTags.split(',').map(t => t.trim()).filter(Boolean);
+                     if (bulkForm.overwriteTags) {
+                         currentTags = tagsToAdd;
+                     } else {
+                         currentTags = [...currentTags, ...tagsToAdd];
+                     }
+                }
+                
+                // Only update if changes were made to tags
+                if (enabledFields.renameTags || enabledFields.removeTags || enabledFields.addTags) {
+                     updates.tags = Array.from(new Set(currentTags)); // Dedupe
                 }
             }
-            onUpdate(id, updates);
+
+            if (Object.keys(updates).length > 0) {
+                onUpdate(id, updates);
+            }
         });
         
         setIsBulkEditing(false);
-        setBulkForm({ country: '', year: '', auctionType: '', collectionId: '', addTags: '', overwriteTags: false });
+        // Reset form
+        setBulkForm({ country: '', year: '', auctionType: '', collectionId: '', addTags: '', removeTags: '', renameTagFrom: '', renameTagTo: '', overwriteTags: false });
+        setEnabledFields({ country: false, year: false, auctionType: false, collectionId: false, addTags: false, removeTags: false, renameTags: false });
         setSelectedIds(new Set());
     };
 
-    const handleBulkExport = async () => {
+    const handleLocalExport = () => {
         const itemsToExport = stamps.filter(s => selectedIds.has(s.id));
-        const success = await exportToGoogleDrive(itemsToExport);
-        if (success) {
-            alert(`Successfully exported ${itemsToExport.length} stamps to Drive.`);
-        }
+        if (itemsToExport.length === 0) return;
+
+        const dataStr = JSON.stringify(itemsToExport, null, 2);
+        const blob = new Blob([dataStr], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `stamplicity_export_selected_${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    };
+
+    const handleExportAll = () => {
+        if (stamps.length === 0) return;
+        const dataStr = JSON.stringify(stamps, null, 2);
+        const blob = new Blob([dataStr], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `stamplicity_full_collection_${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    };
+
+    const handleDriveExport = async () => {
+        const itemsToExport = stamps.filter(s => selectedIds.has(s.id));
+        await exportToGoogleDrive(itemsToExport);
+        alert(`Successfully exported ${itemsToExport.length} stamps to Google Drive.`);
     };
 
     const selectedStampsForListing = useMemo(() => {
@@ -194,6 +286,17 @@ const StampLog: React.FC<StampLogProps> = ({
                                     className="text-xs text-blue-600 hover:underline ml-2"
                                 >
                                     {selectedIds.size === filteredStamps.length ? 'Deselect All' : 'Select All'}
+                                </button>
+                            )}
+                            
+                            {/* Export All Button */}
+                            {stamps.length > 0 && (
+                                <button 
+                                    onClick={handleExportAll}
+                                    className="ml-2 text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold px-2 py-1 rounded border border-slate-200"
+                                    title="Export entire collection to JSON"
+                                >
+                                    Export All
                                 </button>
                             )}
                         </div>
@@ -250,15 +353,33 @@ const StampLog: React.FC<StampLogProps> = ({
                                     <input className="w-full border border-slate-300 rounded p-1.5 text-sm focus:border-blue-500 outline-none" placeholder="Any" value={filterYear} onChange={e => setFilterYear(e.target.value)} />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-semibold text-slate-400 mb-1">Condition</label>
-                                    <input className="w-full border border-slate-300 rounded p-1.5 text-sm focus:border-blue-500 outline-none" placeholder="e.g. Mint, Used" value={filterCondition} onChange={e => setFilterCondition(e.target.value)} />
+                                    <label className="block text-xs font-semibold text-slate-400 mb-1">Item Type</label>
+                                    <select 
+                                        className="w-full border border-slate-300 rounded p-1.5 text-sm focus:border-blue-500 outline-none"
+                                        value={filterItemType} 
+                                        onChange={e => setFilterItemType(e.target.value)}
+                                    >
+                                        <option value="all">All Types</option>
+                                        <option value="stamp">Stamps</option>
+                                        <option value="cover">Covers / Envelopes</option>
+                                        <option value="fdc">First Day Covers</option>
+                                        <option value="block">Blocks / Panes</option>
+                                        <option value="clipping">Clippings</option>
+                                    </select>
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-semibold text-slate-400 mb-1">Auction Type</label>
-                                    <select className="w-full border border-slate-300 rounded p-1.5 text-sm focus:border-blue-500 outline-none" value={filterAuctionType} onChange={e => setFilterAuctionType(e.target.value)}>
-                                        <option value="all">All</option>
-                                        <option value="Singular Auction">Singular</option>
-                                        <option value="Lot Auction">Lot</option>
+                                    <label className="block text-xs font-semibold text-slate-400 mb-1">Condition</label>
+                                    <select 
+                                        className="w-full border border-slate-300 rounded p-1.5 text-sm focus:border-blue-500 outline-none"
+                                        value={filterCondition} 
+                                        onChange={e => setFilterCondition(e.target.value)}
+                                    >
+                                        <option value="all">Any Condition</option>
+                                        <option value="Mint">Mint (All)</option>
+                                        <option value="Used">Used / Cancelled</option>
+                                        <option value="Fine">Fine</option>
+                                        <option value="Very Fine">Very Fine</option>
+                                        <option value="Poor">Poor / Damaged</option>
                                     </select>
                                 </div>
                                  <div className="col-span-2 lg:col-span-1">
@@ -273,6 +394,15 @@ const StampLog: React.FC<StampLogProps> = ({
                                     <input className="w-full border border-slate-300 rounded p-1.5 text-sm focus:border-blue-500 outline-none" placeholder="Filter by tag..." value={filterTags} onChange={e => setFilterTags(e.target.value)} />
                                 </div>
                             </div>
+                            
+                            {/* Mint Toggle Shortcut */}
+                            <div className="mt-3 flex items-center gap-2">
+                                <label className="inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" checked={filterMintOnly} onChange={e => setFilterMintOnly(e.target.checked)} className="sr-only peer" />
+                                    <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500 relative"></div>
+                                    <span className="ml-2 text-xs font-bold text-emerald-700 uppercase">Mint Condition Only</span>
+                                </label>
+                            </div>
                         </div>
                     )}
 
@@ -283,12 +413,12 @@ const StampLog: React.FC<StampLogProps> = ({
                             </div>
                             <div className="h-4 w-px bg-blue-200 hidden sm:block"></div>
                             
-                            <div className="flex gap-2">
+                            <div className="flex gap-2 flex-wrap">
                                 <button 
                                     onClick={() => setIsBulkEditing(true)}
                                     className="px-3 py-1.5 bg-white border border-blue-300 text-blue-700 rounded font-semibold text-sm hover:bg-blue-50 shadow-sm"
                                 >
-                                    Bulk Edit
+                                    Bulk Edit / Tags
                                 </button>
                                 
                                 {selectedIds.size === 2 && (
@@ -302,12 +432,23 @@ const StampLog: React.FC<StampLogProps> = ({
                                 )}
 
                                 <button 
-                                    onClick={handleBulkExport}
+                                    onClick={handleLocalExport}
                                     className="px-3 py-1.5 bg-white border border-blue-300 text-blue-700 rounded font-semibold text-sm hover:bg-blue-50 shadow-sm flex items-center gap-2"
+                                    title="Download selected items as JSON"
+                                >
+                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                                    Export Selected
+                                </button>
+
+                                <button 
+                                    onClick={handleDriveExport}
+                                    className="px-3 py-1.5 bg-white border border-blue-300 text-blue-700 rounded font-semibold text-sm hover:bg-blue-50 shadow-sm flex items-center gap-2"
+                                    title="Export to Google Drive"
                                 >
                                     <svg className="w-4 h-4" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg"><path d="m6.6 66.85 3.85 6.65c.8 1.4 1.9 2.5 3.2 3.3l12.3-21.3h-25.3c-.1 1.5.4 3 1.3 4.55zm26.25-45.55 12.3 21.3 12.6-21.8-12.6-21.8c-.8-1.4-1.9-2.5-3.2-3.3l-12.3 21.3zm38.7 6.1-12.6 21.8 13.9 24.1c.9-.5 1.75-1.15 2.45-1.95.7-.8 1.25-1.7 1.6-2.65l10.4-18c.9-1.55.9-3.45 0-5l-3.85-6.65c-.8-1.4-1.9-2.5-3.2-3.3l-8.7-14.35z" fill="#3b82f6"/></svg>
-                                    Export
+                                    Drive
                                 </button>
+
                                 <button 
                                     onClick={() => setIsEbayListing(true)}
                                     className="px-3 py-1.5 bg-blue-600 text-white border border-blue-600 rounded font-semibold text-sm hover:bg-blue-700 shadow-sm flex items-center gap-2"
@@ -324,87 +465,155 @@ const StampLog: React.FC<StampLogProps> = ({
             {/* Bulk Edit Modal */}
             {isBulkEditing && (
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-fade-in">
-                        <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex justify-between items-center">
+                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-fade-in max-h-[90vh] flex flex-col">
+                        <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex justify-between items-center shrink-0">
                             <h3 className="font-bold text-lg text-slate-800">Bulk Edit ({selectedIds.size} items)</h3>
                             <button onClick={() => setIsBulkEditing(false)} className="text-slate-400 hover:text-slate-600"><span className="text-2xl">×</span></button>
                         </div>
-                        <div className="p-6 space-y-4">
-                            <p className="text-sm text-slate-500 mb-4">Values entered here will be applied to all selected stamps. Leave fields blank to keep existing values.</p>
+                        <div className="p-6 space-y-4 overflow-y-auto">
+                            <p className="text-sm text-slate-500 mb-4 bg-yellow-50 p-3 rounded border border-yellow-100 text-yellow-800">
+                                Select the fields you want to update. Only checked fields will be applied.
+                            </p>
                             
                             <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Country</label>
+                                <div className={`p-3 border rounded-lg ${enabledFields.country ? 'border-blue-500 bg-blue-50' : 'border-slate-200'}`}>
+                                    <div className="flex items-center mb-2">
+                                        <input type="checkbox" checked={enabledFields.country} onChange={() => toggleFieldEnabled('country')} className="w-4 h-4 text-blue-600 rounded mr-2" />
+                                        <label className="text-xs font-bold text-slate-700 uppercase">Country</label>
+                                    </div>
                                     <input 
-                                        className="w-full border border-slate-300 rounded p-2 text-sm"
+                                        className="w-full border border-slate-300 rounded p-2 text-sm disabled:opacity-50 disabled:bg-slate-100"
                                         value={bulkForm.country}
                                         onChange={e => setBulkForm({...bulkForm, country: e.target.value})}
-                                        placeholder="No Change"
+                                        placeholder="Value to apply"
+                                        disabled={!enabledFields.country}
                                     />
                                 </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Year</label>
+                                <div className={`p-3 border rounded-lg ${enabledFields.year ? 'border-blue-500 bg-blue-50' : 'border-slate-200'}`}>
+                                    <div className="flex items-center mb-2">
+                                        <input type="checkbox" checked={enabledFields.year} onChange={() => toggleFieldEnabled('year')} className="w-4 h-4 text-blue-600 rounded mr-2" />
+                                        <label className="text-xs font-bold text-slate-700 uppercase">Year</label>
+                                    </div>
                                     <input 
-                                        className="w-full border border-slate-300 rounded p-2 text-sm"
+                                        className="w-full border border-slate-300 rounded p-2 text-sm disabled:opacity-50 disabled:bg-slate-100"
                                         value={bulkForm.year}
                                         onChange={e => setBulkForm({...bulkForm, year: e.target.value})}
-                                        placeholder="No Change"
+                                        placeholder="Value to apply"
+                                        disabled={!enabledFields.year}
                                     />
                                 </div>
                             </div>
 
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Collection</label>
+                            <div className={`p-3 border rounded-lg ${enabledFields.collectionId ? 'border-blue-500 bg-blue-50' : 'border-slate-200'}`}>
+                                <div className="flex items-center mb-2">
+                                    <input type="checkbox" checked={enabledFields.collectionId} onChange={() => toggleFieldEnabled('collectionId')} className="w-4 h-4 text-blue-600 rounded mr-2" />
+                                    <label className="text-xs font-bold text-slate-700 uppercase">Collection</label>
+                                </div>
                                 <select 
-                                    className="w-full border border-slate-300 rounded p-2 text-sm"
+                                    className="w-full border border-slate-300 rounded p-2 text-sm disabled:opacity-50 disabled:bg-slate-100"
                                     value={bulkForm.collectionId}
                                     onChange={e => setBulkForm({...bulkForm, collectionId: e.target.value})}
+                                    disabled={!enabledFields.collectionId}
                                 >
-                                    <option value="">No Change</option>
+                                    <option value="">Select Collection...</option>
                                     <option value="none">Unsorted (Remove from Collection)</option>
                                     {collections.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                                 </select>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Auction Type</label>
-                                    <select 
-                                        className="w-full border border-slate-300 rounded p-2 text-sm"
-                                        value={bulkForm.auctionType}
-                                        onChange={e => setBulkForm({...bulkForm, auctionType: e.target.value})}
-                                    >
-                                        <option value="">No Change</option>
-                                        <option value="Singular Auction">Singular Auction</option>
-                                        <option value="Lot Auction">Lot Auction</option>
-                                    </select>
+                            <div className={`p-3 border rounded-lg ${enabledFields.auctionType ? 'border-blue-500 bg-blue-50' : 'border-slate-200'}`}>
+                                <div className="flex items-center mb-2">
+                                    <input type="checkbox" checked={enabledFields.auctionType} onChange={() => toggleFieldEnabled('auctionType')} className="w-4 h-4 text-blue-600 rounded mr-2" />
+                                    <label className="text-xs font-bold text-slate-700 uppercase">Auction Type</label>
                                 </div>
-                                <div>
-                                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Add Tags</label>
-                                    <input 
-                                        className="w-full border border-slate-300 rounded p-2 text-sm"
-                                        value={bulkForm.addTags}
-                                        onChange={e => setBulkForm({...bulkForm, addTags: e.target.value})}
-                                        placeholder="comma, separated"
-                                    />
-                                    <div className="flex items-center mt-2">
-                                        <input 
-                                            type="checkbox"
-                                            id="overwriteTags"
-                                            checked={bulkForm.overwriteTags}
-                                            onChange={e => setBulkForm({...bulkForm, overwriteTags: e.target.checked})}
-                                            className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 mr-2"
-                                        />
-                                        <label htmlFor="overwriteTags" className="text-xs text-slate-500 cursor-pointer select-none">
-                                            Overwrite existing tags? (Default: Append)
-                                        </label>
+                                <select 
+                                    className="w-full border border-slate-300 rounded p-2 text-sm disabled:opacity-50 disabled:bg-slate-100"
+                                    value={bulkForm.auctionType}
+                                    onChange={e => setBulkForm({...bulkForm, auctionType: e.target.value})}
+                                    disabled={!enabledFields.auctionType}
+                                >
+                                    <option value="">Select Type...</option>
+                                    <option value="Singular Auction">Singular Auction</option>
+                                    <option value="Lot Auction">Lot Auction</option>
+                                </select>
+                            </div>
+
+                            {/* Tag Management Section */}
+                            <div className="border border-slate-200 rounded-lg p-3 bg-slate-50">
+                                <h4 className="text-xs font-bold text-slate-500 uppercase mb-3">Tag Management</h4>
+                                
+                                <div className="space-y-3">
+                                    <div className={`flex items-start gap-2 ${!enabledFields.addTags ? 'opacity-75' : ''}`}>
+                                         <input type="checkbox" checked={enabledFields.addTags} onChange={() => toggleFieldEnabled('addTags')} className="w-4 h-4 text-blue-600 rounded mt-1" />
+                                         <div className="flex-grow">
+                                            <label className="text-xs font-semibold text-slate-700 block mb-1">Add Tags</label>
+                                            <input 
+                                                className="w-full border border-slate-300 rounded p-2 text-sm disabled:bg-slate-100"
+                                                value={bulkForm.addTags}
+                                                onChange={e => setBulkForm({...bulkForm, addTags: e.target.value})}
+                                                placeholder="New tags (comma separated)"
+                                                disabled={!enabledFields.addTags}
+                                            />
+                                            <div className="flex items-center mt-1">
+                                                <input 
+                                                    type="checkbox"
+                                                    id="overwriteTags"
+                                                    checked={bulkForm.overwriteTags}
+                                                    onChange={e => setBulkForm({...bulkForm, overwriteTags: e.target.checked})}
+                                                    className="w-3 h-3 rounded border-slate-300 text-blue-600 mr-1"
+                                                    disabled={!enabledFields.addTags}
+                                                />
+                                                <label htmlFor="overwriteTags" className="text-[10px] text-slate-500">Overwrite existing tags</label>
+                                            </div>
+                                         </div>
+                                    </div>
+
+                                    <div className={`flex items-start gap-2 ${!enabledFields.removeTags ? 'opacity-75' : ''}`}>
+                                         <input type="checkbox" checked={enabledFields.removeTags} onChange={() => toggleFieldEnabled('removeTags')} className="w-4 h-4 text-blue-600 rounded mt-1" />
+                                         <div className="flex-grow">
+                                            <label className="text-xs font-semibold text-slate-700 block mb-1">Remove Tags</label>
+                                            <input 
+                                                className="w-full border border-slate-300 rounded p-2 text-sm disabled:bg-slate-100"
+                                                value={bulkForm.removeTags}
+                                                onChange={e => setBulkForm({...bulkForm, removeTags: e.target.value})}
+                                                placeholder="Tags to remove (comma separated)"
+                                                disabled={!enabledFields.removeTags}
+                                            />
+                                         </div>
+                                    </div>
+
+                                    <div className={`flex items-start gap-2 ${!enabledFields.renameTags ? 'opacity-75' : ''}`}>
+                                         <input type="checkbox" checked={enabledFields.renameTags} onChange={() => toggleFieldEnabled('renameTags')} className="w-4 h-4 text-blue-600 rounded mt-1" />
+                                         <div className="flex-grow">
+                                            <label className="text-xs font-semibold text-slate-700 block mb-1">Rename Tag</label>
+                                            <div className="flex gap-2">
+                                                <input 
+                                                    className="w-full border border-slate-300 rounded p-2 text-sm disabled:bg-slate-100"
+                                                    value={bulkForm.renameTagFrom}
+                                                    onChange={e => setBulkForm({...bulkForm, renameTagFrom: e.target.value})}
+                                                    placeholder="Find tag..."
+                                                    disabled={!enabledFields.renameTags}
+                                                />
+                                                <input 
+                                                    className="w-full border border-slate-300 rounded p-2 text-sm disabled:bg-slate-100"
+                                                    value={bulkForm.renameTagTo}
+                                                    onChange={e => setBulkForm({...bulkForm, renameTagTo: e.target.value})}
+                                                    placeholder="Replace with..."
+                                                    disabled={!enabledFields.renameTags}
+                                                />
+                                            </div>
+                                         </div>
                                     </div>
                                 </div>
                             </div>
+
                         </div>
-                        <div className="bg-slate-50 px-6 py-4 border-t border-slate-200 flex justify-end gap-3">
+                        <div className="bg-slate-50 px-6 py-4 border-t border-slate-200 flex justify-end gap-3 shrink-0">
                             <button onClick={() => setIsBulkEditing(false)} className="px-4 py-2 text-slate-600 font-medium hover:bg-slate-200 rounded">Cancel</button>
-                            <button onClick={handleBulkSave} className="px-6 py-2 bg-blue-600 text-white font-bold rounded hover:bg-blue-700 shadow-sm">Apply Changes</button>
+                            <button onClick={handleBulkSave} className="px-6 py-2 bg-blue-600 text-white font-bold rounded hover:bg-blue-700 shadow-sm flex items-center gap-2">
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
+                                Apply Changes
+                            </button>
                         </div>
                     </div>
                 </div>

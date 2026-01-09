@@ -1,25 +1,40 @@
+# Dependencies
+node_modules
+.pnp
+.pnp.js
+
+# Testing
+coverage
+
+# Production
+dist
+build
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# OS Files
+.DS_Store
+Thumbs.db
+
 # Logs
-logs
-*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
-*.local
+# Screencaps 
+Screenshot_8-1-2026_214610_console.cloud.google.com.jpeg
 
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
-.DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
+# Google cloud oauth config json
+client_secret_673273935306-l5183e18d6tphfgrpnpa2qrgav4o0ecj.apps.googleusercontent.com.json
+
+# .txt Files
+.txt
+GITHUB-TOKEN.txt
+ebay-developer-api.txt
+google-ai-gemini-api-key.txt
 *.txt

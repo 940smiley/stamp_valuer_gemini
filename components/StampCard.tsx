@@ -14,9 +14,13 @@ interface StampCardProps {
 const StampCard: React.FC<StampCardProps> = ({ stamp, collections, onRemove, onUpdate, onEditImage }) => {
   const [localData, setLocalData] = React.useState<StampData & { collectionId?: string }>({ ...stamp });
   const [isDirty, setIsDirty] = React.useState(false);
+  const [isShareOpen, setIsShareOpen] = React.useState(false);
+
+  // Check privacy setting from local storage indirectly (since prop drilling is heavy, quick read or use context)
+  const isPrivate = JSON.parse(localStorage.getItem('stamp-valuer-settings') || '{}').isPrivateCollection;
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
+    const { name, value } = e.target as HTMLInputElement;
     setLocalData(prev => ({ ...prev, [name]: value }));
     setIsDirty(true);
   };
@@ -29,6 +33,21 @@ const StampCard: React.FC<StampCardProps> = ({ stamp, collections, onRemove, onU
   const handleDiscard = () => {
     setLocalData({ ...stamp });
     setIsDirty(false);
+  };
+
+  const shareItem = (platform: 'facebook' | 'twitter' | 'copy') => {
+      const text = `Check out this rare ${localData.year} ${localData.country} stamp! Value: ${localData.estimatedValue}`;
+      const url = window.location.href; // In real app, this would be a specific item ID URL
+      
+      if (platform === 'facebook') {
+          window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}&quote=${encodeURIComponent(text)}`, '_blank');
+      } else if (platform === 'twitter') {
+          window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`, '_blank');
+      } else {
+          navigator.clipboard.writeText(`${text} ${url}`);
+          alert("Link copied to clipboard!");
+      }
+      setIsShareOpen(false);
   };
 
   const isSingular = localData.auctionType === 'Singular Auction';
@@ -62,6 +81,24 @@ const StampCard: React.FC<StampCardProps> = ({ stamp, collections, onRemove, onU
        )}
 
        <div className="absolute top-2 right-2 flex space-x-2 z-10">
+        {!isPrivate && (
+            <div className="relative">
+                <button 
+                    onClick={() => setIsShareOpen(!isShareOpen)}
+                    className="p-1.5 bg-slate-100 text-slate-500 rounded-full hover:bg-blue-100 hover:text-blue-600 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm"
+                    title="Share"
+                >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
+                </button>
+                {isShareOpen && (
+                    <div className="absolute right-0 mt-2 w-32 bg-white rounded-lg shadow-xl border border-slate-100 py-1 z-20">
+                        <button onClick={() => shareItem('facebook')} className="block w-full text-left px-4 py-2 text-xs hover:bg-slate-50 text-blue-700 font-bold">Facebook</button>
+                        <button onClick={() => shareItem('twitter')} className="block w-full text-left px-4 py-2 text-xs hover:bg-slate-50 text-sky-500 font-bold">X (Twitter)</button>
+                        <button onClick={() => shareItem('copy')} className="block w-full text-left px-4 py-2 text-xs hover:bg-slate-50 text-slate-600">Copy Link</button>
+                    </div>
+                )}
+            </div>
+        )}
         <button 
           onClick={() => onEditImage(stamp.id)} 
           className="p-1.5 bg-slate-100 text-slate-500 rounded-full hover:bg-blue-100 hover:text-blue-600 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm"
@@ -203,6 +240,18 @@ const StampCard: React.FC<StampCardProps> = ({ stamp, collections, onRemove, onU
                 </div>
                 
                 <div className="flex flex-wrap gap-1 mt-2">
+                    {localData.itemType && localData.itemType !== 'stamp' && (
+                        <span className={`px-2 py-0.5 text-[10px] font-bold rounded uppercase tracking-wider border flex items-center gap-1
+                            ${localData.itemType === 'cover' || localData.itemType === 'fdc' ? 'bg-orange-100 text-orange-800 border-orange-200' : 
+                              localData.itemType === 'block' || localData.itemType === 'pane' ? 'bg-purple-100 text-purple-800 border-purple-200' : 
+                              'bg-slate-100 text-slate-700 border-slate-200'}`}>
+                             {/* Icon for Covers/FDCs */}
+                             {(localData.itemType === 'cover' || localData.itemType === 'fdc') && (
+                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                             )}
+                            {localData.itemType}
+                        </span>
+                    )}
                     {localData.tags && localData.tags.map((tag, idx) => (
                       <span key={idx} className="px-2 py-0.5 bg-slate-100 text-[10px] font-bold text-slate-500 rounded uppercase tracking-wider border border-slate-200">
                         {tag}
@@ -280,6 +329,21 @@ const StampCard: React.FC<StampCardProps> = ({ stamp, collections, onRemove, onU
                 </p>
              )}
           </div>
+
+          {/* AI Verification Notes Section */}
+          {localData.verificationNotes && localData.verificationNotes.length > 0 && (
+              <div className="bg-blue-50/50 p-3 rounded-lg border border-blue-100">
+                  <h4 className="text-[10px] font-bold text-blue-400 uppercase mb-1 flex items-center gap-1">
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                      AI Verification Notes
+                  </h4>
+                  <ul className="list-disc list-inside text-xs text-slate-600 space-y-0.5">
+                      {localData.verificationNotes.map((note, i) => (
+                          <li key={i}>{note}</li>
+                      ))}
+                  </ul>
+              </div>
+          )}
 
           <div className="mt-4 pt-3 border-t border-slate-100">
               <h4 className="text-[10px] font-bold text-slate-400 uppercase mb-2">Marketplace Connectivity</h4>

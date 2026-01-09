@@ -21,6 +21,7 @@ export interface StampData {
   faceValue?: string; // e.g. "5c"
   currency?: string;
   imageSide?: 'front' | 'back' | 'piece';
+  itemType?: 'stamp' | 'cover' | 'block' | 'pane' | 'fdc' | 'clipping' | 'other'; // New classification
   suggestedRotation?: number; // degrees to straighten
   colorShade?: string;
   overprint?: string;
@@ -55,8 +56,22 @@ export type SortBy = 'date' | 'name' | 'country' | 'value';
 export type SortOrder = 'asc' | 'desc';
 
 export interface AppSettings {
-  ebayApiKey: string;
+  // eBay Integration
+  ebayApiKey: string; // App ID
+  ebayDevId?: string;
+  ebayCertId?: string;
   ebayOAuthToken?: string;
+  
+  // Social & Privacy
+  facebookPageId?: string;
+  facebookAccessToken?: string;
+  isPrivateCollection: boolean;
+
+  // Google Integration
+  googleClientId?: string;
+  googleDeveloperKey?: string;
+  
+  // AI Settings
   useThinkingMode: boolean;
   useSearchGrounding: boolean;
   modelQuality: 'fast' | 'pro';

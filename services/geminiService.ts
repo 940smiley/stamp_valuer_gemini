@@ -10,34 +10,36 @@ const stampSchema = {
         year: { type: Type.STRING, description: 'The estimated year or range of issue.' },
         faceValue: { type: Type.STRING, description: 'The denomination printed on the stamp.' },
         currency: { type: Type.STRING, description: 'The currency unit.' },
-        catalogNumber: { type: Type.STRING, description: 'Primary Scott, Michel, or SG catalog number found via search or knowledge.' },
-        alternateCatalogNumbers: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'Alternative catalog numbers if identification is ambiguous.' },
-        condition: { type: Type.STRING, description: 'Grading assessment (e.g., VF, Mint, Used).' },
-        perforations: { type: Type.STRING, description: 'Perforation measurement (e.g. "11", "12.5 x 12"). Note varieties.' },
-        watermark: { type: Type.STRING, description: 'Description of watermark if visible or characteristic of the issue.' },
-        colorShade: { type: Type.STRING, description: 'Specific color shade nuances (e.g., "Carmine vs Rose").' },
+        catalogNumber: { type: Type.STRING, description: 'Primary Scott, Michel, or SG catalog number.' },
+        alternateCatalogNumbers: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'Alternative catalog numbers.' },
+        condition: { type: Type.STRING, description: 'Grading assessment (e.g., VF, Mint, Used, Cover, FDC).' },
+        itemType: { type: Type.STRING, description: 'CRITICAL: Classify as one of: "stamp", "cover" (envelope), "block" (multiple attached), "pane", "fdc" (first day cover), "clipping" (on paper square), "stationery", or "other".' },
+        perforations: { type: Type.STRING, description: 'Perforation measurement.' },
+        watermark: { type: Type.STRING, description: 'Watermark description.' },
+        colorShade: { type: Type.STRING, description: 'Specific color shade nuances.' },
         overprint: { type: Type.STRING, description: 'Text of any overprints or surcharges.' },
         plateFlaw: { type: Type.STRING, description: 'Any visible plate flaws or errors.' },
-        printingMethod: { type: Type.STRING, description: 'Printing method (Engraving, Lithography, etc.).' },
-        imageSide: { type: Type.STRING, description: 'Classify view: "front", "back" (gum/hinge side), or "piece" (on envelope/postcard/fragment).' },
-        suggestedRotation: { type: Type.NUMBER, description: 'The exact angle in degrees (e.g. 2.5, -4.0) required to rotate the image so the stamp design is perfectly vertical.' },
+        printingMethod: { type: Type.STRING, description: 'Printing method.' },
+        imageSide: { type: Type.STRING, description: 'Classify view: "front", "back", or "piece".' },
+        suggestedRotation: { type: Type.NUMBER, description: 'Angle to straighten image.' },
         description: { type: Type.STRING, description: 'A brief description.' },
         estimatedValue: { type: Type.STRING, description: 'Estimated eBay value range.' },
-        auctionType: { type: Type.STRING, description: 'Must be "Singular Auction" or "Lot Auction".' },
-        justification: { type: Type.STRING, description: 'Reason for the auction recommendation.' },
+        auctionType: { type: Type.STRING, description: 'Singular vs Lot Auction.' },
+        justification: { type: Type.STRING, description: 'Reason for auction type.' },
+        verificationNotes: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'AI notes on authenticity, condition quirks, or identification reasoning.' },
         confidenceBreakdown: { 
             type: Type.OBJECT,
             properties: {
-                identification: { type: Type.NUMBER, description: 'Confidence (0.0-1.0) in catalog identification.' },
-                condition: { type: Type.NUMBER, description: 'Confidence (0.0-1.0) in condition grading.' },
-                valuation: { type: Type.NUMBER, description: 'Confidence (0.0-1.0) in value estimation.' }
+                identification: { type: Type.NUMBER },
+                condition: { type: Type.NUMBER },
+                valuation: { type: Type.NUMBER }
             },
             required: ['identification', 'condition', 'valuation']
         },
         isRejected: { type: Type.BOOLEAN, description: 'True if not a philatelic item.' },
         tags: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'eBay search tags.' }
     },
-    required: ['name', 'country', 'year', 'description', 'estimatedValue', 'auctionType', 'isRejected']
+    required: ['name', 'country', 'year', 'description', 'estimatedValue', 'auctionType', 'isRejected', 'itemType']
 };
 
 const videoAnalysisSchema = {
@@ -46,7 +48,7 @@ const videoAnalysisSchema = {
         totalStampsDetected: { type: Type.NUMBER, description: 'Approximate count of distinct stamps visible.' },
         countries: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'List of countries identified.' },
         notableItems: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'List of specific rare or notable stamps/series identified.' },
-        overallCondition: { type: Type.STRING, description: 'General condition of the collection (e.g., "Mixed", "Mostly Mint", "Heavily Cancelled").' },
+        overallCondition: { type: Type.STRING, description: 'General condition of the collection.' },
         summary: { type: Type.STRING, description: 'A paragraph summarizing the collection contents.' }
     },
     required: ['totalStampsDetected', 'countries', 'summary']
@@ -56,8 +58,8 @@ const duplicateSchema = {
     type: Type.OBJECT,
     properties: {
         isDuplicate: { type: Type.BOOLEAN },
-        similarityScore: { type: Type.NUMBER, description: '0 to 1 score of visual/philatelic similarity' },
-        notes: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'Differences or similarities noted.' }
+        similarityScore: { type: Type.NUMBER },
+        notes: { type: Type.ARRAY, items: { type: Type.STRING } }
     },
     required: ['isDuplicate', 'similarityScore', 'notes']
 };
@@ -65,8 +67,8 @@ const duplicateSchema = {
 const ebayListingSchema = {
   type: Type.OBJECT,
   properties: {
-    title: { type: Type.STRING, description: "SEO optimized eBay title (max 80 chars). Include Country, Year, Cat#, Condition." },
-    description: { type: Type.STRING, description: "Professional HTML description for the listing." },
+    title: { type: Type.STRING, description: "SEO optimized eBay title." },
+    description: { type: Type.STRING, description: "HTML description." },
     itemSpecifics: { 
       type: Type.ARRAY, 
       items: { 
@@ -77,8 +79,8 @@ const ebayListingSchema = {
         } 
       } 
     },
-    suggestedPrice: { type: Type.NUMBER, description: "Suggested starting price based on value." },
-    categoryId: { type: Type.STRING, description: "Suggested eBay Category ID (e.g. 260 for Stamps)." }
+    suggestedPrice: { type: Type.NUMBER },
+    categoryId: { type: Type.STRING }
   },
   required: ['title', 'description', 'itemSpecifics', 'suggestedPrice']
 };
@@ -121,26 +123,16 @@ export async function identifyAndValueStamp(
             contents: {
                 parts: [
                     { inlineData: { mimeType: 'image/jpeg', data: base64Image } },
-                    { text: `Analyze this philatelic item with advanced philatelic expertise.
-
-1.  **Identification**: Precise Country, Year, Face Value, and Series.
-2.  **Catalog Number**: Use the 'googleSearch' tool to identify the specific Scott, Michel, or Stanley Gibbons number. Construct search queries like "[Country] stamp [Face Value] [Subject]". Verify the result against visual details in the image. If multiple possibilities exist, list them in 'alternateCatalogNumbers'.
-3.  **Advanced Philatelic Details**:
-    *   **Perforations**: Count (e.g., "Perf 11") and type (Line vs Comb).
-    *   **Watermarks**: Identify if visible or characteristic of the identified issue.
-    *   **Printing Method**: Engraving, Lithography, Typography, or Photogravure.
-    *   **Color Shades**: Identify specific shades (e.g., "Ultramarine" vs "Blue").
-    *   **Varieties**: Explicitly check for Overprints, Surcharges, and Plate Flaws.
-4.  **Condition & Grading**: Assess centering (Gem, VF, F, AVG), margins, cancellations, and faults (tears, creases, thins).
-5.  **Valuation**: Estimate market value range based on *comparable sold listings* found via search.
-6.  **Meta**: 
-    *   **Image Side**: Classify as 'front', 'back' (gum side), or 'piece' (on cover/postcard).
-    *   **Rotation**: Calculate the exact angle (e.g. 2.5, -4.0) needed to straighten the image so the design is vertical.
-
-**Confidence Breakdown (0.0 - 1.0)**:
-*   'identification': High (0.8+) if catalog number is verified by search images.
-*   'condition': High if image resolution allows detailed inspection of perfs/paper.
-*   'valuation': High if direct sales data is found.
+                    { text: `Analyze this philatelic item with expert precision.
+                    
+1.  **Strictly Classify Item Type**: Identify if this is a standard "stamp", "block" (multiples), "cover" (envelope), "fdc" (First Day Cover), "pane", "clipping" (stamp on paper piece), or "stationery".
+2.  **Identification**: Country, Year, Face Value, Series.
+3.  **Cataloging**: Identify catalog number (Scott/Michel).
+4.  **Details**: Perforations, Watermark, Printing, Shades, Overprints.
+5.  **Condition**: Grade it (Mint NH, Hinged, Used, VF, F, etc.). Look for faults.
+6.  **Valuation**: Estimate market value based on similar sold items.
+7.  **Meta**: Image side and rotation angle.
+8.  **Verification Notes**: Provide 1-3 short bullet points explaining WHY you identified it this way or noting specific condition issues (e.g. "Short perf at top", "Cancel obscures value").
 
 Output JSON.` },
                 ],

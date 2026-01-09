@@ -23,8 +23,22 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onUpdate }) => 
 
   const handleTestConnection = async () => {
       setTestStatus('testing');
-      const result = await verifyEbayConnection(settings.ebayApiKey, settings.ebayOAuthToken || '');
+      // Use configured token or fallback to check availability
+      const apiKey = settings.ebayApiKey || process.env.EBAY_API_KEY || '';
+      const token = settings.ebayOAuthToken || process.env.EBAY_OAUTH_TOKEN || '';
+      
+      const result = await verifyEbayConnection(apiKey, token);
       setTestStatus(result ? 'success' : 'failed');
+  };
+
+  // Mock Facebook Login
+  const handleFacebookConnect = () => {
+      alert("Facebook OAuth Flow would start here.\n\nSimulating connection...");
+      onUpdate({
+          ...settings,
+          facebookPageId: "123456789",
+          facebookAccessToken: "mock_fb_token_xyz"
+      });
   };
 
   return (
@@ -38,42 +52,155 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onUpdate }) => 
       </h2>
 
       <div className="space-y-8">
+        {/* Privacy Section */}
+        <section>
+            <h3 className="text-lg font-semibold text-slate-700 mb-4 border-b pb-2">Collection Privacy</h3>
+            <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg border border-slate-200">
+              <div>
+                <span className="font-semibold text-slate-800 flex items-center gap-2">
+                    {settings.isPrivateCollection ? (
+                        <svg className="w-4 h-4 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+                    ) : (
+                        <svg className="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" /></svg>
+                    )}
+                    Private Collection Mode
+                </span>
+                <span className="text-xs text-slate-500 block mt-1">When enabled, sharing options are hidden and public API endpoints are disabled.</span>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input 
+                    type="checkbox" 
+                    name="isPrivateCollection" 
+                    checked={settings.isPrivateCollection} 
+                    onChange={handleChange} 
+                    className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+              </label>
+            </div>
+        </section>
+
+        {/* eBay Section */}
         <section>
           <h3 className="text-lg font-semibold text-slate-700 mb-4 border-b pb-2">eBay Integration</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-                <label className="block text-sm font-medium text-slate-600 mb-1">Developer API Key</label>
-                <input 
-                type="password" 
-                name="ebayApiKey"
-                value={settings.ebayApiKey}
-                onChange={handleChange}
-                placeholder="Client ID"
-                className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition shadow-sm"
-                />
-            </div>
-            <div>
-                <label className="block text-sm font-medium text-slate-600 mb-1">OAuth Token</label>
-                <input 
-                type="password" 
-                name="ebayOAuthToken"
-                value={settings.ebayOAuthToken || ''}
-                onChange={handleChange}
-                placeholder="User Access Token"
-                className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition shadow-sm"
-                />
-            </div>
+          <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 mb-4">
+              <p className="text-sm text-slate-500 mb-4">
+                  Configure your eBay Developer credentials to enable direct listing. 
+                  {process.env.EBAY_API_KEY ? <span className="text-green-600 font-bold ml-1">✓ Backend keys detected in environment.</span> : <span>You can also enter them manually below.</span>}
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label className="block text-sm font-medium text-slate-600 mb-1">App ID (Client ID)</label>
+                    <input 
+                    type="password" 
+                    name="ebayApiKey"
+                    value={settings.ebayApiKey}
+                    onChange={handleChange}
+                    placeholder={process.env.EBAY_API_KEY ? "Loaded from Env" : "Enter App ID"}
+                    disabled={!!process.env.EBAY_API_KEY}
+                    className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition shadow-sm disabled:bg-slate-200 disabled:text-slate-500"
+                    />
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-slate-600 mb-1">Dev ID</label>
+                    <input 
+                    type="password" 
+                    name="ebayDevId"
+                    value={settings.ebayDevId || ''}
+                    onChange={handleChange}
+                    placeholder="Enter Dev ID"
+                    className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition shadow-sm"
+                    />
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-slate-600 mb-1">Cert ID (Client Secret)</label>
+                    <input 
+                    type="password" 
+                    name="ebayCertId"
+                    value={settings.ebayCertId || ''}
+                    onChange={handleChange}
+                    placeholder="Enter Cert ID"
+                    className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition shadow-sm"
+                    />
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-slate-600 mb-1">User OAuth Token</label>
+                    <input 
+                    type="password" 
+                    name="ebayOAuthToken"
+                    value={settings.ebayOAuthToken || ''}
+                    onChange={handleChange}
+                    placeholder="Paste User Access Token"
+                    className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition shadow-sm"
+                    />
+                </div>
+              </div>
           </div>
           
-          <div className="mt-4 flex items-center justify-between">
+          <div className="flex items-center justify-between">
              <button 
                 onClick={handleTestConnection} 
-                disabled={testStatus === 'testing' || !settings.ebayApiKey}
+                disabled={testStatus === 'testing'}
                 className={`px-4 py-2 rounded text-sm font-bold transition ${testStatus === 'success' ? 'bg-green-600 text-white' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'}`}
              >
-                {testStatus === 'testing' ? 'Testing...' : testStatus === 'success' ? 'Connection Verified' : 'Test Connection'}
+                {testStatus === 'testing' ? 'Testing API...' : testStatus === 'success' ? 'Connection Verified' : 'Test eBay Connection'}
              </button>
              {testStatus === 'failed' && <span className="text-red-500 text-sm font-medium">Connection Failed. Check Credentials.</span>}
+          </div>
+        </section>
+
+        {/* Social Section */}
+        <section>
+            <h3 className="text-lg font-semibold text-slate-700 mb-4 border-b pb-2">Social Connectivity</h3>
+            <div className="flex items-center justify-between p-4 bg-blue-50 rounded-lg border border-blue-100">
+                <div className="flex items-center gap-3">
+                    <div className="bg-blue-600 text-white p-2 rounded-full">
+                        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+                    </div>
+                    <div>
+                        <h4 className="font-bold text-slate-800">Facebook Page</h4>
+                        <p className="text-xs text-slate-600">Connect to automatically post new finds.</p>
+                    </div>
+                </div>
+                {settings.facebookAccessToken ? (
+                    <button onClick={() => onUpdate({...settings, facebookAccessToken: '', facebookPageId: ''})} className="text-sm text-red-600 font-bold hover:underline">Disconnect</button>
+                ) : (
+                    <button onClick={handleFacebookConnect} className="px-4 py-2 bg-blue-600 text-white text-sm font-bold rounded hover:bg-blue-700">Connect Page</button>
+                )}
+            </div>
+        </section>
+
+        {/* Google Section */}
+        <section>
+          <h3 className="text-lg font-semibold text-slate-700 mb-4 border-b pb-2">Google Integration (Drive / Photos)</h3>
+          <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+             <p className="text-sm text-slate-500 mb-4">
+                 To use the Cloud Picker for Drive or Photos, you must configure a Google Cloud Project with the <strong>Google Picker API</strong> enabled.
+             </p>
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label className="block text-sm font-medium text-slate-600 mb-1">Google Client ID</label>
+                    <input 
+                    type="text" 
+                    name="googleClientId"
+                    value={settings.googleClientId || ''}
+                    onChange={handleChange}
+                    placeholder="apps.googleusercontent.com"
+                    className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition shadow-sm"
+                    />
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-slate-600 mb-1">Developer API Key</label>
+                    <input 
+                    type="password" 
+                    name="googleDeveloperKey"
+                    value={settings.googleDeveloperKey || ''}
+                    onChange={handleChange}
+                    placeholder="API Key"
+                    className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition shadow-sm"
+                    />
+                </div>
+             </div>
           </div>
         </section>
 
