@@ -1,19 +1,24 @@
-# Auto-merge workflow
-name: Auto-merge pull requests
+name: Auto Merge
 
 on:
-  pull_request:
-    types: [opened, synchronize]
+  pull_request_review:
+    types: [submitted]
+  check_suite:
+    types: [completed]
 
 jobs:
   auto-merge:
     runs-on: ubuntu-latest
-    permissions:
-      pull-requests: write
-      contents: write
+    if: github.event.review.state == 'approved'
     steps:
-      - name: Enable auto-merge for PR
-        uses: peter-evans/enable-pull-request-automerge@v3
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          pull-request-number: ${{ github.event.pull_request.number }}
+      - name: Auto-merge approved PR
+        uses: pascalgn/automerge-action@v0.16.2
+        env:
+          GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+          MERGE_LABELS: "auto-merge"
+          MERGE_METHOD: "squash"
+
+      - name: Fallback Notification
+        if: failure()
+        run: |
+          echo "Auto-merge failed. Please merge manually."

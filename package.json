@@ -8,13 +8,18 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "start": "node server.js"
+    "start": "node server.js",
+    "cap:sync": "cap sync",
+    "cap:build": "npm run build && npx cap sync"
   },
   "dependencies": {
     "@google/genai": "^1.19.0",
     "express": "^5.2.1",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "@capacitor/core": "^6.0.0",
+    "@capacitor/android": "^6.0.0",
+    "@capacitor/ios": "^6.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.12.0",
@@ -25,6 +30,8 @@
     "postcss": "^8.4.38",
     "tailwindcss": "^4.1.18",
     "typescript": "^5.9.3",
-    "vite": "^7.3.1"
+    "vite": "^7.3.1",
+    "@capacitor/cli": "^6.0.0",
+    "vite-plugin-pwa": "^0.21.1"
   }
 }

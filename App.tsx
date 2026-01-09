@@ -133,6 +133,13 @@ const App: React.FC = () => {
             similarityScore: possibleDuplicate ? 0.85 : 0
           };
 
+          const isPremium = false; // Placeholder for premium status check
+          if (!isPremium && stamps.length >= 10) {
+            setError("Logging limit reached. Free accounts are limited to 10 objects. Please upgrade to premium to add more.");
+            setIsLoading(false);
+            return;
+          }
+
           setStamps(prevStamps => [newStamp, ...prevStamps]);
         } catch (apiError) {
           if (apiError instanceof Error) {

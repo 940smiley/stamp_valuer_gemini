@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 
 // This script runs in the CI environment
 // It fetches the PR diff, sends it to Gemini, and posts the review as a comment.
@@ -47,8 +47,7 @@ async function postComment(body) {
 }
 
 async function reviewCode(diff) {
-    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro-latest" });
+    const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 
     const prompt = `You are an expert Senior Software Engineer. Review the following git diff for a Pull Request.
   
@@ -67,9 +66,17 @@ async function reviewCode(diff) {
   \`\`\`
   `;
 
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    return response.text();
+    // Use the new GoogleGenAI (v1.0) signature
+    const response = await ai.models.generateContent({
+        model: 'gemini-1.5-pro-latest',
+        contents: {
+            parts: [
+                { text: prompt }
+            ]
+        }
+    });
+
+    return response.text;
 }
 
 async function main() {

@@ -1,39 +1,45 @@
-# Code formatter workflow
-name: Format code and push
+name: Auto Fix
 
 on:
-  push:
-    branches: [ main, master, develop ]
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
 
 jobs:
-  format:
+  lint-and-fix:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
 
-      - name: Setup Node.js
+      - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: 20
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
-      - name: Run formatters
-        run: npx prettier --write . || echo "Prettier completed"
+      - name: Lint and Fix
+        run: |
+          npm run lint -- --fix || echo "Linting failed, but moving to fix"
+          npx prettier --write . || echo "Prettier failed"
+        continue-on-error: true
 
-      - name: Check for changes
-        id: changes
+      - name: Commit changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: auto-fix linting and formatting issues"
+          branch: ${{ github.head_ref }}
+
+      - name: Fallback Notification
+        if: failure()
         run: |
-          git diff --exit-code || echo "has_changes=true" >> $GITHUB_OUTPUT
-          
-      - name: Commit and push changes
-        if: steps.changes.outputs.has_changes == 'true'
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git add .
-          git commit -m "Auto-fix: Format code [skip ci]" || echo "No changes to commit"
-          git push
+          echo "Auto-fix failed. Please check the logs and apply fixes manually."
+          # Here we could add a GH CLI command to comment on the PR if TOKEN is provided
