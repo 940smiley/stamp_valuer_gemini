@@ -1,0 +1,35 @@
+{
+  "aiProviders": {
+    "gemini": {
+      "apiKeyEnvVar": "GEMINI_API_KEY",
+      "model": "gemini-2.5-flash",
+      "apiEndpoint": "https://generativelanguage.googleapis.com/v1beta/models/",
+      "defaultConfig": {
+        "temperature": 0.2,
+        "maxOutputTokens": 2048
+      }
+    }
+  },
+  "analysisSettings": {
+    "stampIdentification": {
+      "enabled": true,
+      "accuracyTarget": 0.9,
+      "validationRequired": true
+    },
+    "grading": {
+      "enabled": true,
+      "standards": ["scott", "michel", "yvert", "sgd"]
+    },
+    "valuation": {
+      "enabled": true,
+      "dataSources": ["colnect", "hipstamp", "delcampe", "ebay"],
+      "historicalData": true
+    }
+  },
+  "workflowIntegrations": {
+    "githubActions": {
+      "autoFixEnabled": true,
+      "issueLabeling": true
+    }
+  }
+}
