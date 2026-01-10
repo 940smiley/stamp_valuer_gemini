@@ -10,31 +10,12 @@ coverage
 dist
 build
 
-# Environment variables
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
-# OS Files
-.DS_Store
-Thumbs.db
-
-# Logs
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Screencaps 
-Screenshot_8-1-2026_214610_console.cloud.google.com.jpeg
-
-# Google cloud oauth config json
-client_secret_673273935306-l5183e18d6tphfgrpnpa2qrgav4o0ecj.apps.googleusercontent.com.json
-
-# .txt Files
-.txt
+# Credentials and Secrets
 GITHUB-TOKEN.txt
 ebay-developer-api.txt
 google-ai-gemini-api-key.txt
+client_secret_*.json
 *.txt
+*.jpeg
+ai-config.json
+.env.local
