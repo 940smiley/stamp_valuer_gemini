@@ -501,6 +501,7 @@ const App: React.FC = () => {
           <ImageEditor
             imageSrc={editingStamp.imageUrl}
             suggestedRotation={editingStamp.suggestedRotation}
+            geminiApiKey={settings.geminiApiKey}
             onSave={handleSaveEditedImage}
             onCancel={() => setEditingImageId(null)}
           />

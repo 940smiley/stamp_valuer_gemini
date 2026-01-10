@@ -19,7 +19,7 @@ const BatchProcessor: React.FC<BatchProcessorProps> = ({ settings, onProcessed }
   const handleFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
     const fileList = e.target.files;
     if (!fileList) return;
-    
+
     const files: File[] = Array.from(fileList);
     const newItems: BatchItem[] = files.map(file => ({
       id: Math.random().toString(36).substr(2, 9),
@@ -39,88 +39,88 @@ const BatchProcessor: React.FC<BatchProcessorProps> = ({ settings, onProcessed }
 
   const selectAll = () => {
     if (selectedItemIds.size === items.length) {
-        setSelectedItemIds(new Set());
+      setSelectedItemIds(new Set());
     } else {
-        setSelectedItemIds(new Set(items.map(i => i.id)));
+      setSelectedItemIds(new Set(items.map(i => i.id)));
     }
   };
 
   // --- Common Edit Actions ---
 
   const processImageOnCanvas = async (dataUrl: string, operation: 'rotateLeft' | 'rotateRight' | 'enhance'): Promise<string> => {
-      return new Promise((resolve, reject) => {
-          const img = new Image();
-          img.src = dataUrl;
-          img.onload = () => {
-              const canvas = document.createElement('canvas');
-              const ctx = canvas.getContext('2d');
-              if (!ctx) { reject("Canvas error"); return; }
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.src = dataUrl;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        if (!ctx) { reject("Canvas error"); return; }
 
-              if (operation === 'rotateLeft' || operation === 'rotateRight') {
-                  canvas.width = img.height;
-                  canvas.height = img.width;
-                  ctx.translate(canvas.width / 2, canvas.height / 2);
-                  ctx.rotate(operation === 'rotateRight' ? Math.PI / 2 : -Math.PI / 2);
-                  ctx.drawImage(img, -img.width / 2, -img.height / 2);
-              } else if (operation === 'enhance') {
-                  canvas.width = img.width;
-                  canvas.height = img.height;
-                  ctx.drawImage(img, 0, 0);
-                  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                  const data = imageData.data;
-                  // Simple histogram stretch
-                  let min = 255, max = 0;
-                  for (let i = 0; i < data.length; i += 4) {
-                      const avg = (data[i] + data[i+1] + data[i+2]) / 3;
-                      if (avg < min) min = avg;
-                      if (avg > max) max = avg;
-                  }
-                  const range = max - min;
-                  if (range > 10) {
-                      for (let i = 0; i < data.length; i += 4) {
-                          data[i] = ((data[i] - min) / range) * 255;
-                          data[i+1] = ((data[i+1] - min) / range) * 255;
-                          data[i+2] = ((data[i+2] - min) / range) * 255;
-                      }
-                      ctx.putImageData(imageData, 0, 0);
-                  }
-              }
-              resolve(canvas.toDataURL('image/jpeg', 0.9));
-          };
-          img.onerror = () => reject("Image load error");
-      });
+        if (operation === 'rotateLeft' || operation === 'rotateRight') {
+          canvas.width = img.height;
+          canvas.height = img.width;
+          ctx.translate(canvas.width / 2, canvas.height / 2);
+          ctx.rotate(operation === 'rotateRight' ? Math.PI / 2 : -Math.PI / 2);
+          ctx.drawImage(img, -img.width / 2, -img.height / 2);
+        } else if (operation === 'enhance') {
+          canvas.width = img.width;
+          canvas.height = img.height;
+          ctx.drawImage(img, 0, 0);
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const data = imageData.data;
+          // Simple histogram stretch
+          let min = 255, max = 0;
+          for (let i = 0; i < data.length; i += 4) {
+            const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+            if (avg < min) min = avg;
+            if (avg > max) max = avg;
+          }
+          const range = max - min;
+          if (range > 10) {
+            for (let i = 0; i < data.length; i += 4) {
+              data[i] = ((data[i] - min) / range) * 255;
+              data[i + 1] = ((data[i + 1] - min) / range) * 255;
+              data[i + 2] = ((data[i + 2] - min) / range) * 255;
+            }
+            ctx.putImageData(imageData, 0, 0);
+          }
+        }
+        resolve(canvas.toDataURL('image/jpeg', 0.9));
+      };
+      img.onerror = () => reject("Image load error");
+    });
   };
 
   const applyBatchEdit = async (operation: 'rotateLeft' | 'rotateRight' | 'enhance') => {
-      if (selectedItemIds.size === 0) return;
-      setIsEditing(true); // Start loading state
-      
-      const newItems = [...items];
-      
-      // Process in parallel for speed using Promise.all
-      const updates = items.map(async (item, index) => {
-          if (selectedItemIds.has(item.id) && item.status === 'pending') {
-               try {
-                   const newPreview = await processImageOnCanvas(item.preview, operation);
-                   return { index, preview: newPreview };
-               } catch (e) {
-                   console.error(`Failed to edit item ${index}`, e);
-                   return null;
-               }
-          }
-          return null;
-      });
+    if (selectedItemIds.size === 0) return;
+    setIsEditing(true); // Start loading state
 
-      const results = await Promise.all(updates);
-      
-      results.forEach(res => {
-          if (res) {
-              newItems[res.index] = { ...newItems[res.index], preview: res.preview };
-          }
-      });
-      
-      setItems(newItems);
-      setIsEditing(false); // End loading state
+    const newItems = [...items];
+
+    // Process in parallel for speed using Promise.all
+    const updates = items.map(async (item, index) => {
+      if (selectedItemIds.has(item.id) && item.status === 'pending') {
+        try {
+          const newPreview = await processImageOnCanvas(item.preview, operation);
+          return { index, preview: newPreview };
+        } catch (e) {
+          console.error(`Failed to edit item ${index}`, e);
+          return null;
+        }
+      }
+      return null;
+    });
+
+    const results = await Promise.all(updates);
+
+    results.forEach(res => {
+      if (res) {
+        newItems[res.index] = { ...newItems[res.index], preview: res.preview };
+      }
+    });
+
+    setItems(newItems);
+    setIsEditing(false); // End loading state
   };
 
   const processBatch = async () => {
@@ -135,18 +135,18 @@ const BatchProcessor: React.FC<BatchProcessorProps> = ({ settings, onProcessed }
       try {
         // Handle Base64 from Blob URL
         const base64Promise = new Promise<string>(async (resolve, reject) => {
-             try {
-                const response = await fetch(item.preview);
-                const blob = await response.blob();
-                const reader = new FileReader();
-                reader.onload = () => resolve((reader.result as string).split(',')[1]);
-                reader.readAsDataURL(blob);
-             } catch (e) { reject(e); }
+          try {
+            const response = await fetch(item.preview);
+            const blob = await response.blob();
+            const reader = new FileReader();
+            reader.onload = () => resolve((reader.result as string).split(',')[1]);
+            reader.readAsDataURL(blob);
+          } catch (e) { reject(e); }
         });
         const base64 = await base64Promise;
 
         // Step 1: Sanitize (Check if philatelic)
-        const isPhilatelic = await checkIsPhilatelic(base64);
+        const isPhilatelic = await checkIsPhilatelic(base64, settings.geminiApiKey);
 
         if (!isPhilatelic) {
           setItems(prev => prev.map(i => i.id === item.id ? { ...i, status: 'rejected' } : i));
@@ -156,9 +156,9 @@ const BatchProcessor: React.FC<BatchProcessorProps> = ({ settings, onProcessed }
         // Step 2: Identify and Value
         setItems(prev => prev.map(i => i.id === item.id ? { ...i, status: 'processing' } : i));
         const data = await identifyAndValueStamp(base64, settings);
-        
+
         setItems(prev => prev.map(i => i.id === item.id ? { ...i, status: 'completed', result: data } : i));
-        
+
         results.push({
           ...data,
           id: Date.now() + Math.random(),
@@ -183,7 +183,7 @@ const BatchProcessor: React.FC<BatchProcessorProps> = ({ settings, onProcessed }
         </p>
 
         <div className="flex flex-wrap gap-4 items-center">
-          <button 
+          <button
             onClick={() => fileInputRef.current?.click()}
             className="px-6 py-3 bg-slate-800 text-white rounded-lg font-bold hover:bg-slate-900 transition flex items-center shadow-md"
             disabled={isProcessing || isEditing}
@@ -196,105 +196,105 @@ const BatchProcessor: React.FC<BatchProcessorProps> = ({ settings, onProcessed }
 
           {items.length > 0 && (
             <>
-                <div className="h-8 w-px bg-slate-300 mx-2"></div>
-                <button 
-                    onClick={processBatch}
-                    disabled={isProcessing || isEditing || items.every(i => i.status !== 'pending')}
-                    className="px-6 py-3 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition flex items-center shadow-md disabled:bg-slate-400 disabled:cursor-not-allowed"
-                >
-                    {isProcessing ? (
-                        <span className="flex items-center"><Loader /><span className="ml-2">Processing...</span></span>
-                    ) : (
-                        <>Start AI Analysis</>
-                    )}
-                </button>
-                <button 
-                    onClick={() => { setItems([]); setSelectedItemIds(new Set()); }}
-                    className="text-red-500 font-semibold hover:underline text-sm ml-auto"
-                    disabled={isProcessing || isEditing}
-                >
-                    Clear All
-                </button>
+              <div className="h-8 w-px bg-slate-300 mx-2"></div>
+              <button
+                onClick={processBatch}
+                disabled={isProcessing || isEditing || items.every(i => i.status !== 'pending')}
+                className="px-6 py-3 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition flex items-center shadow-md disabled:bg-slate-400 disabled:cursor-not-allowed"
+              >
+                {isProcessing ? (
+                  <span className="flex items-center"><Loader /><span className="ml-2">Processing...</span></span>
+                ) : (
+                  <>Start AI Analysis</>
+                )}
+              </button>
+              <button
+                onClick={() => { setItems([]); setSelectedItemIds(new Set()); }}
+                className="text-red-500 font-semibold hover:underline text-sm ml-auto"
+                disabled={isProcessing || isEditing}
+              >
+                Clear All
+              </button>
             </>
           )}
 
-          <input 
-            type="file" 
-            multiple 
-            ref={fileInputRef} 
-            onChange={handleFiles} 
-            className="hidden" 
+          <input
+            type="file"
+            multiple
+            ref={fileInputRef}
+            onChange={handleFiles}
+            className="hidden"
             accept="image/*"
           />
         </div>
       </div>
-      
+
       {items.length > 0 && (
-          <div className="flex items-center justify-between bg-slate-100 p-2 rounded-lg border border-slate-200">
-              <div className="flex items-center gap-4">
-                  <button onClick={selectAll} className="text-sm font-bold text-slate-600 hover:text-blue-600 px-2" disabled={isEditing || isProcessing}>
-                      {selectedItemIds.size === items.length && items.length > 0 ? 'Deselect All' : 'Select All'}
-                  </button>
-                  <span className="text-xs text-slate-400">|</span>
-                  <span className="text-sm font-medium text-slate-500">{selectedItemIds.size} Selected</span>
-              </div>
-              <div className="flex gap-2">
-                  <button 
-                    onClick={() => applyBatchEdit('rotateLeft')} 
-                    disabled={selectedItemIds.size === 0 || isProcessing || isEditing}
-                    className="p-1.5 bg-white border border-slate-300 rounded hover:bg-slate-50 disabled:opacity-50 transition" 
-                    title="Rotate Left"
-                  >
-                      {isEditing ? '...' : '↺'}
-                  </button>
-                   <button 
-                    onClick={() => applyBatchEdit('rotateRight')} 
-                    disabled={selectedItemIds.size === 0 || isProcessing || isEditing}
-                    className="p-1.5 bg-white border border-slate-300 rounded hover:bg-slate-50 disabled:opacity-50 transition" 
-                    title="Rotate Right"
-                  >
-                      {isEditing ? '...' : '↻'}
-                  </button>
-                   <button 
-                    onClick={() => applyBatchEdit('enhance')} 
-                    disabled={selectedItemIds.size === 0 || isProcessing || isEditing}
-                    className="px-3 py-1.5 bg-white border border-slate-300 rounded text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50 transition"
-                  >
-                      {isEditing ? 'Enhancing...' : 'Auto-Enhance'}
-                  </button>
-              </div>
+        <div className="flex items-center justify-between bg-slate-100 p-2 rounded-lg border border-slate-200">
+          <div className="flex items-center gap-4">
+            <button onClick={selectAll} className="text-sm font-bold text-slate-600 hover:text-blue-600 px-2" disabled={isEditing || isProcessing}>
+              {selectedItemIds.size === items.length && items.length > 0 ? 'Deselect All' : 'Select All'}
+            </button>
+            <span className="text-xs text-slate-400">|</span>
+            <span className="text-sm font-medium text-slate-500">{selectedItemIds.size} Selected</span>
           </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => applyBatchEdit('rotateLeft')}
+              disabled={selectedItemIds.size === 0 || isProcessing || isEditing}
+              className="p-1.5 bg-white border border-slate-300 rounded hover:bg-slate-50 disabled:opacity-50 transition"
+              title="Rotate Left"
+            >
+              {isEditing ? '...' : '↺'}
+            </button>
+            <button
+              onClick={() => applyBatchEdit('rotateRight')}
+              disabled={selectedItemIds.size === 0 || isProcessing || isEditing}
+              className="p-1.5 bg-white border border-slate-300 rounded hover:bg-slate-50 disabled:opacity-50 transition"
+              title="Rotate Right"
+            >
+              {isEditing ? '...' : '↻'}
+            </button>
+            <button
+              onClick={() => applyBatchEdit('enhance')}
+              disabled={selectedItemIds.size === 0 || isProcessing || isEditing}
+              className="px-3 py-1.5 bg-white border border-slate-300 rounded text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50 transition"
+            >
+              {isEditing ? 'Enhancing...' : 'Auto-Enhance'}
+            </button>
+          </div>
+        </div>
       )}
 
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
         {items.map(item => (
-          <div 
-            key={item.id} 
+          <div
+            key={item.id}
             className={`relative bg-white rounded-lg border overflow-hidden group shadow-sm transition-all cursor-pointer ${selectedItemIds.has(item.id) ? 'ring-2 ring-blue-500 border-blue-500' : 'border-slate-200'}`}
             onClick={() => !isEditing && !isProcessing && toggleSelect(item.id)}
           >
             <div className="absolute top-2 left-2 z-10">
-                <input 
-                    type="checkbox" 
-                    checked={selectedItemIds.has(item.id)}
-                    onChange={() => {}} // Handled by div click
-                    className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 pointer-events-none"
-                    disabled={isEditing || isProcessing}
-                />
+              <input
+                type="checkbox"
+                checked={selectedItemIds.has(item.id)}
+                onChange={() => { }} // Handled by div click
+                className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 pointer-events-none"
+                disabled={isEditing || isProcessing}
+              />
             </div>
 
             <img src={item.preview} className="w-full h-32 object-cover" alt={item.file.name} />
-            
+
             <div className="p-2 text-xs truncate font-medium text-slate-600">
               {item.file.name}
             </div>
 
             <div className={`absolute inset-0 flex items-center justify-center bg-black/40 transition-opacity ${item.status === 'pending' ? 'opacity-0 hover:opacity-10' : 'opacity-100'}`}>
-               {item.status !== 'pending' && item.status !== 'checking' && item.status !== 'processing' && (
-                   <span className="text-white text-[10px] font-bold uppercase tracking-wider bg-black/50 px-2 py-1 rounded">
-                      {item.status}
-                   </span>
-               )}
+              {item.status !== 'pending' && item.status !== 'checking' && item.status !== 'processing' && (
+                <span className="text-white text-[10px] font-bold uppercase tracking-wider bg-black/50 px-2 py-1 rounded">
+                  {item.status}
+                </span>
+              )}
             </div>
 
             {item.status === 'completed' && (

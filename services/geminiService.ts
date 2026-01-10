@@ -98,12 +98,12 @@ export async function identifyAndValueStamp(
     const ai = getAiClient(settings.geminiApiKey);
 
     try {
-        let model = 'gemini-1.5-flash';
+        let model = 'gemini-flash-latest';
         if (settings.modelQuality === 'pro' || settings.useThinkingMode) {
-            model = 'gemini-1.5-pro';
+            model = 'gemini-3-pro-preview';
         }
         if (settings.useSearchGrounding) {
-            model = 'gemini-1.5-pro';
+            model = 'gemini-3-pro-image-preview';
         }
 
         const config: any = {
@@ -166,11 +166,11 @@ Output JSON.` },
     }
 }
 
-export async function analyzeCollectionVideo(base64Video: string, mimeType: string): Promise<any> {
-    const ai = getAiClient();
+export async function analyzeCollectionVideo(base64Video: string, mimeType: string, customKey?: string): Promise<any> {
+    const ai = getAiClient(customKey);
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-1.5-pro',
+            model: 'gemini-3-pro-preview',
             contents: {
                 parts: [
                     { inlineData: { mimeType: mimeType, data: base64Video } },
@@ -197,11 +197,11 @@ export async function analyzeCollectionVideo(base64Video: string, mimeType: stri
     }
 }
 
-export async function editStampImage(base64Image: string, prompt: string): Promise<string> {
-    const ai = getAiClient();
+export async function editStampImage(base64Image: string, prompt: string, customKey?: string): Promise<string> {
+    const ai = getAiClient(customKey);
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-1.5-flash',
+            model: 'gemini-2.5-flash-image',
             contents: {
                 parts: [
                     { inlineData: { mimeType: 'image/jpeg', data: base64Image } },
@@ -222,29 +222,30 @@ export async function editStampImage(base64Image: string, prompt: string): Promi
     }
 }
 
-export async function checkIsPhilatelic(base64Image: string): Promise<boolean> {
-    const ai = getAiClient();
+export async function checkIsPhilatelic(base64Image: string, customKey?: string): Promise<boolean> {
+    const ai = getAiClient(customKey);
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-1.5-flash',
+            model: 'gemini-flash-lite-latest',
             contents: {
                 parts: [
                     { inlineData: { mimeType: 'image/jpeg', data: base64Image } },
-                    { text: 'Is this a stamp/cover? Answer ONLY "TRUE" or "FALSE".' }
+                    { text: 'Analyze this image. Is it a postage stamp, a revenue stamp, or a first day cover? Return "TRUE" if it is any of these, or "FALSE" if it is anything else (like a coin, banknote, or random object). Answer ONLY "TRUE" or "FALSE".' }
                 ]
             }
         });
-        return response.text.trim().toUpperCase().includes('TRUE');
+        const result = response.text.trim().toUpperCase();
+        return result.includes('TRUE');
     } catch (e) {
         return false;
     }
 }
 
-export async function verifyDuplicate(image1Base64: string, image2Base64: string): Promise<{ isDuplicate: boolean; score: number; notes: string[] }> {
-    const ai = getAiClient();
+export async function verifyDuplicate(image1Base64: string, image2Base64: string, customKey?: string): Promise<{ isDuplicate: boolean; score: number; notes: string[] }> {
+    const ai = getAiClient(customKey);
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-1.5-flash',
+            model: 'gemini-3-flash-preview',
             contents: {
                 parts: [
                     { inlineData: { mimeType: 'image/jpeg', data: image1Base64 } },
@@ -266,11 +267,11 @@ export async function verifyDuplicate(image1Base64: string, image2Base64: string
     }
 }
 
-export async function generateEbayListing(stamp: Stamp): Promise<any> {
-    const ai = getAiClient();
+export async function generateEbayListing(stamp: Stamp, customKey?: string): Promise<any> {
+    const ai = getAiClient(customKey);
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-1.5-flash',
+            model: 'gemini-3-flash-preview',
             contents: {
                 parts: [
                     {

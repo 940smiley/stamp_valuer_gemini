@@ -6,6 +6,7 @@ import Loader from './Loader';
 interface ImageEditorProps {
     imageSrc: string;
     suggestedRotation?: number;
+    geminiApiKey?: string;
     onSave: (newImageBase64: string) => void;
     onCancel: () => void;
 }
@@ -19,18 +20,18 @@ interface CropRect {
 
 type CropAction = 'none' | 'create' | 'move' | 'resize-nw' | 'resize-ne' | 'resize-sw' | 'resize-se';
 
-const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, suggestedRotation, onSave, onCancel }) => {
+const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, suggestedRotation, geminiApiKey, onSave, onCancel }) => {
     // --- History State (Source of Truth) ---
     const [history, setHistory] = useState<string[]>([]);
     const [historyIndex, setHistoryIndex] = useState(-1);
-    
+
     // --- Editor Tool State ---
     const [mode, setMode] = useState<'view' | 'crop' | 'ai'>('view');
     const [cropRect, setCropRect] = useState<CropRect | null>(null);
     const [cropAction, setCropAction] = useState<CropAction>('none');
     const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
     const [initialRect, setInitialRect] = useState<CropRect | null>(null);
-    
+
     // --- AI State ---
     const [aiPrompt, setAiPrompt] = useState('');
     const [isAiProcessing, setIsAiProcessing] = useState(false);
@@ -52,12 +53,12 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, suggestedRotation, 
             canvas.width = img.width;
             canvas.height = img.height;
             const ctx = canvas.getContext('2d');
-            if(ctx) {
+            if (ctx) {
                 ctx.drawImage(img, 0, 0);
                 const dataUrl = canvas.toDataURL('image/jpeg', 1.0);
                 setHistory([dataUrl]);
                 setHistoryIndex(0);
-                
+
                 // Set suggested rotation if available
                 if (suggestedRotation && Math.abs(suggestedRotation) > 0.5) {
                     setFineRotation(suggestedRotation);
@@ -70,18 +71,18 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, suggestedRotation, 
     useEffect(() => {
         // "Compare" Logic: If holding compare, show original (index 0) or prev state
         const indexToRender = showComparison ? 0 : historyIndex;
-        
+
         if (indexToRender >= 0 && history[indexToRender] && canvasRef.current) {
             const img = new Image();
             img.src = history[indexToRender];
             img.onload = () => {
                 const canvas = canvasRef.current;
                 if (!canvas) return;
-                
+
                 // Clear and resize canvas
                 const ctx = canvas.getContext('2d');
                 if (!ctx) return;
-                
+
                 canvas.width = img.width;
                 canvas.height = img.height;
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -91,7 +92,7 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, suggestedRotation, 
     }, [history, historyIndex, showComparison]);
 
     // --- History Operations ---
-    
+
     const pushToHistory = (newDataUrl: string) => {
         const newHistory = history.slice(0, historyIndex + 1);
         newHistory.push(newDataUrl);
@@ -120,18 +121,18 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, suggestedRotation, 
     // 1. Rotation (Apply Fine Rotation)
     const applyRotation = () => {
         if (fineRotation === 0 || historyIndex < 0) return;
-        
+
         const img = new Image();
         img.src = history[historyIndex];
         img.onload = () => {
             const rad = (fineRotation * Math.PI) / 180;
             const absCos = Math.abs(Math.cos(rad));
             const absSin = Math.abs(Math.sin(rad));
-            
+
             // Calculate new bounding box to hold rotated image
             const newWidth = img.width * absCos + img.height * absSin;
             const newHeight = img.width * absSin + img.height * absCos;
-            
+
             const tempCanvas = document.createElement('canvas');
             tempCanvas.width = newWidth;
             tempCanvas.height = newHeight;
@@ -139,14 +140,14 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, suggestedRotation, 
             if (!ctx) return;
 
             // Fill background (Black looks best for rotation gaps in editors)
-            ctx.fillStyle = '#000000'; 
+            ctx.fillStyle = '#000000';
             ctx.fillRect(0, 0, newWidth, newHeight);
-            
+
             // Translate to center and rotate
             ctx.translate(newWidth / 2, newHeight / 2);
             ctx.rotate(rad);
             ctx.drawImage(img, -img.width / 2, -img.height / 2);
-            
+
             pushToHistory(tempCanvas.toDataURL('image/jpeg', 0.95));
             setFineRotation(0); // Reset slider after applying
         };
@@ -162,12 +163,12 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, suggestedRotation, 
             canvas.width = img.height;
             canvas.height = img.width;
             const ctx = canvas.getContext('2d');
-            if(!ctx) return;
-            
+            if (!ctx) return;
+
             ctx.translate(canvas.width / 2, canvas.height / 2);
             ctx.rotate(dir === 'right' ? Math.PI / 2 : -Math.PI / 2);
             ctx.drawImage(img, -img.width / 2, -img.height / 2);
-            
+
             pushToHistory(canvas.toDataURL('image/jpeg', 0.95));
         };
     };
@@ -175,16 +176,25 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, suggestedRotation, 
     // 3. Crop
     const applyCrop = () => {
         if (!cropRect || !canvasRef.current || historyIndex < 0) return;
-        
+
         const img = new Image();
         img.src = history[historyIndex];
         img.onload = () => {
             const canvas = document.createElement('canvas');
             // Calculate pixel coordinates from percentage
-            const realX = Math.floor(cropRect.x * img.width);
-            const realY = Math.floor(cropRect.y * img.height);
-            const realW = Math.floor(cropRect.w * img.width);
-            const realH = Math.floor(cropRect.h * img.height);
+            const rawX = cropRect.x * img.width;
+            const rawY = cropRect.y * img.height;
+            const rawW = cropRect.w * img.width;
+            const rawH = cropRect.h * img.height;
+
+            // Add 10% padding (of the component size) to each side for better framing
+            const paddingW = rawW * 0.1;
+            const paddingH = rawH * 0.1;
+
+            const realX = Math.max(0, Math.floor(rawX - paddingW));
+            const realY = Math.max(0, Math.floor(rawY - paddingH));
+            const realW = Math.min(img.width - realX, Math.floor(rawW + paddingW * 2));
+            const realH = Math.min(img.height - realY, Math.floor(rawH + paddingH * 2));
 
             if (realW <= 0 || realH <= 0) return;
 
@@ -207,14 +217,14 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, suggestedRotation, 
         const canvas = canvasRef.current;
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
-        
+
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const data = imageData.data;
-        
+
         let min = 255, max = 0;
         // Find min/max luminance
         for (let i = 0; i < data.length; i += 4) {
-            const avg = (data[i] + data[i+1] + data[i+2]) / 3;
+            const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
             if (avg < min) min = avg;
             if (avg > max) max = avg;
         }
@@ -223,8 +233,8 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, suggestedRotation, 
         if (range > 10) { // Only apply if there's room to stretch
             for (let i = 0; i < data.length; i += 4) {
                 data[i] = ((data[i] - min) / range) * 255;
-                data[i+1] = ((data[i+1] - min) / range) * 255;
-                data[i+2] = ((data[i+2] - min) / range) * 255;
+                data[i + 1] = ((data[i + 1] - min) / range) * 255;
+                data[i + 2] = ((data[i + 2] - min) / range) * 255;
             }
             ctx.putImageData(imageData, 0, 0);
             pushToHistory(canvas.toDataURL('image/jpeg', 0.95));
@@ -240,9 +250,9 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, suggestedRotation, 
 
         setIsAiProcessing(true);
         try {
-            const currentBase64 = history[historyIndex].split(',')[1]; 
+            const currentBase64 = history[historyIndex].split(',')[1];
             // Call Gemini
-            const newImageBytes = await editStampImage(currentBase64, finalPrompt);
+            const newImageBytes = await editStampImage(currentBase64, finalPrompt, geminiApiKey);
             pushToHistory(`data:image/jpeg;base64,${newImageBytes}`);
             setAiPrompt('');
         } catch (e) {
@@ -276,7 +286,7 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, suggestedRotation, 
             if (isNear(pos.x, cropRect.x + cropRect.w) && isNear(pos.y, cropRect.y)) { setCropAction('resize-ne'); setInitialRect(cropRect); return; }
             if (isNear(pos.x, cropRect.x, cropRect.y + cropRect.h)) { setCropAction('resize-sw'); setInitialRect(cropRect); return; }
             if (isNear(pos.x, cropRect.x + cropRect.w) && isNear(pos.y, cropRect.y + cropRect.h)) { setCropAction('resize-se'); setInitialRect(cropRect); return; }
-            
+
             // Check Move
             if (pos.x >= cropRect.x && pos.x <= cropRect.x + cropRect.w && pos.y >= cropRect.y && pos.y <= cropRect.y + cropRect.h) {
                 setCropAction('move');
@@ -299,13 +309,13 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, suggestedRotation, 
             const y = Math.min(pos.y, dragStart.y);
             const w = Math.abs(pos.x - dragStart.x);
             const h = Math.abs(pos.y - dragStart.y);
-            setCropRect({ x: clamp(x), y: clamp(y), w: Math.min(w, 1-x), h: Math.min(h, 1-y) });
+            setCropRect({ x: clamp(x), y: clamp(y), w: Math.min(w, 1 - x), h: Math.min(h, 1 - y) });
         } else if (cropAction === 'move' && initialRect) {
             const dx = pos.x - dragStart.x;
             const dy = pos.y - dragStart.y;
             let newX = initialRect.x + dx;
             let newY = initialRect.y + dy;
-            
+
             // Bounds checking
             if (newX < 0) newX = 0; if (newY < 0) newY = 0;
             if (newX + initialRect.w > 1) newX = 1 - initialRect.w;
@@ -318,7 +328,7 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, suggestedRotation, 
             if (cropAction.includes('e')) { const d = pos.x - dragStart.x; newW = clamp(initialRect.w + d); }
             if (cropAction.includes('n')) { const d = pos.y - dragStart.y; newY = clamp(initialRect.y + d); newH = initialRect.h - (newY - initialRect.y); }
             if (cropAction.includes('s')) { const d = pos.y - dragStart.y; newH = clamp(initialRect.h + d); }
-            
+
             // Flip if dragged across
             if (newW < 0) { newX += newW; newW = Math.abs(newW); }
             if (newH < 0) { newY += newH; newH = Math.abs(newH); }
@@ -340,7 +350,7 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, suggestedRotation, 
             // A safer bet is to alert user or just save the history head.
             // Let's rely on user clicking "Apply Rotation".
         }
-        
+
         // We save whatever is at the current history index
         if (historyIndex >= 0) {
             onSave(history[historyIndex].split(',')[1]);
@@ -360,8 +370,8 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, suggestedRotation, 
                         </button>
                         <div className="w-px bg-slate-700"></div>
                         <button onClick={handleRedo} disabled={historyIndex >= history.length - 1} className="px-3 py-1.5 rounded hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition flex items-center gap-2">
-                             Redo
-                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 10h-10a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6" /></svg>
+                            Redo
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 10h-10a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6" /></svg>
                         </button>
                     </div>
                 </div>
@@ -376,9 +386,9 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, suggestedRotation, 
 
             {/* Main Workspace */}
             <div className="flex-1 w-full max-w-6xl flex gap-4 overflow-hidden h-full pb-4">
-                
+
                 {/* Canvas Area */}
-                <div 
+                <div
                     ref={containerRef}
                     className={`flex-1 bg-slate-900 rounded-xl relative flex items-center justify-center overflow-hidden border border-slate-800 select-none ${mode === 'crop' ? 'cursor-crosshair' : ''}`}
                     onMouseDown={handleMouseDown}
@@ -386,12 +396,12 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, suggestedRotation, 
                     onMouseUp={handleMouseUp}
                     onMouseLeave={handleMouseUp}
                 >
-                    <canvas 
-                        ref={canvasRef} 
+                    <canvas
+                        ref={canvasRef}
                         className="max-w-full max-h-full object-contain shadow-2xl transition-transform duration-200 origin-center"
-                        style={{ transform: `rotate(${fineRotation}deg)` }} 
+                        style={{ transform: `rotate(${fineRotation}deg)` }}
                     />
-                    
+
                     {/* Visual Overlay: Rotation Grid */}
                     {fineRotation !== 0 && (
                         <div className="absolute inset-0 grid grid-cols-3 grid-rows-3 pointer-events-none opacity-50 z-10" style={{ transform: `rotate(${fineRotation}deg)` }}>
@@ -403,7 +413,7 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, suggestedRotation, 
 
                     {/* Visual Overlay: Compare Button (Bottom Right) */}
                     {historyIndex > 0 && !isAiProcessing && (
-                        <button 
+                        <button
                             onMouseDown={() => setShowComparison(true)}
                             onMouseUp={() => setShowComparison(false)}
                             onMouseLeave={() => setShowComparison(false)}
@@ -416,10 +426,10 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, suggestedRotation, 
 
                     {/* Visual Overlay: Loading State */}
                     {isAiProcessing && (
-                         <div className="absolute inset-0 bg-black/50 z-30 flex flex-col items-center justify-center">
-                             <Loader />
-                             <p className="mt-4 font-bold text-white animate-pulse">AI Processing...</p>
-                         </div>
+                        <div className="absolute inset-0 bg-black/50 z-30 flex flex-col items-center justify-center">
+                            <Loader />
+                            <p className="mt-4 font-bold text-white animate-pulse">AI Processing...</p>
+                        </div>
                     )}
 
                     {/* Visual Overlay: Crop Box */}
@@ -443,7 +453,7 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, suggestedRotation, 
 
                 {/* Sidebar Tools */}
                 <div className="w-72 bg-slate-800 rounded-xl p-4 flex flex-col gap-6 overflow-y-auto border border-slate-700">
-                    
+
                     {/* Tool Toggle */}
                     <div className="flex p-1 bg-slate-900 rounded-lg border border-slate-700">
                         <button onClick={() => setMode('view')} className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${mode === 'view' ? 'bg-slate-700 text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}>Adjust</button>
@@ -460,7 +470,7 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, suggestedRotation, 
                                     Auto-Enhance Contrast
                                 </button>
                             </div>
-                            
+
                             <div className="space-y-3">
                                 <h4 className="text-xs font-bold uppercase text-slate-500 tracking-wider">Orientation</h4>
                                 <div className="flex gap-2">
@@ -471,24 +481,24 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, suggestedRotation, 
                                         ↻ 90°
                                     </button>
                                 </div>
-                                
+
                                 <div className="bg-slate-900 p-3 rounded-lg border border-slate-700">
                                     <div className="flex justify-between items-center text-xs mb-3">
                                         <span className="font-semibold text-slate-300">Fine Straighten</span>
                                         <span className="text-[10px] text-slate-400 font-mono bg-slate-800 px-1.5 rounded">{fineRotation.toFixed(1)}°</span>
                                     </div>
-                                    <input 
-                                        type="range" 
-                                        min="-45" 
-                                        max="45" 
-                                        step="0.1" 
-                                        value={fineRotation} 
-                                        onChange={(e) => setFineRotation(parseFloat(e.target.value))} 
-                                        className="w-full h-1 bg-slate-600 rounded appearance-none cursor-pointer accent-blue-500 mb-3" 
+                                    <input
+                                        type="range"
+                                        min="-45"
+                                        max="45"
+                                        step="0.1"
+                                        value={fineRotation}
+                                        onChange={(e) => setFineRotation(parseFloat(e.target.value))}
+                                        className="w-full h-1 bg-slate-600 rounded appearance-none cursor-pointer accent-blue-500 mb-3"
                                     />
-                                    <button 
-                                        onClick={applyRotation} 
-                                        disabled={fineRotation === 0} 
+                                    <button
+                                        onClick={applyRotation}
+                                        disabled={fineRotation === 0}
                                         className="w-full py-1.5 bg-blue-600 text-white text-xs font-bold rounded hover:bg-blue-500 disabled:opacity-30 disabled:cursor-not-allowed transition"
                                     >
                                         Apply Rotation
@@ -504,15 +514,15 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, suggestedRotation, 
                             <div className="bg-slate-700/30 p-4 rounded-lg border border-slate-700 text-center">
                                 <p className="text-xs text-slate-400 mb-4">Drag inside image to create selection.</p>
                                 <div className="grid grid-cols-2 gap-2">
-                                    <button 
-                                        onClick={applyCrop} 
+                                    <button
+                                        onClick={applyCrop}
                                         disabled={!cropRect}
                                         className="py-2 bg-green-600 hover:bg-green-500 rounded font-bold text-sm shadow disabled:opacity-50 disabled:cursor-not-allowed transition"
                                     >
                                         Apply Crop
                                     </button>
-                                    <button 
-                                        onClick={() => setCropRect(null)} 
+                                    <button
+                                        onClick={() => setCropRect(null)}
                                         disabled={!cropRect}
                                         className="py-2 bg-slate-600 hover:bg-slate-500 rounded text-sm text-slate-200 disabled:opacity-50 transition"
                                     >
@@ -524,43 +534,43 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, suggestedRotation, 
                     )}
 
                     {mode === 'ai' && (
-                         <div className="space-y-6 animate-fade-in">
-                             <div className="bg-indigo-900/30 p-4 rounded-xl border border-indigo-500/30">
+                        <div className="space-y-6 animate-fade-in">
+                            <div className="bg-indigo-900/30 p-4 rounded-xl border border-indigo-500/30">
                                 <h4 className="text-xs font-bold uppercase text-indigo-300 tracking-wider flex items-center gap-2 mb-4">
                                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
                                     Quick Actions
                                 </h4>
-                                
-                                <button 
-                                    onClick={() => handleAiEdit("Remove the background entirely and replace it with a solid white background. Keep the stamp intact.")} 
-                                    disabled={isAiProcessing} 
+
+                                <button
+                                    onClick={() => handleAiEdit("Remove the background entirely and replace it with a solid white background. Keep the stamp intact.")}
+                                    disabled={isAiProcessing}
                                     className="w-full py-3 bg-white text-indigo-900 rounded-lg font-bold shadow hover:bg-indigo-50 disabled:opacity-50 transition flex items-center justify-center gap-2 text-sm"
                                 >
                                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
                                     Remove Background
                                 </button>
                                 <p className="text-[10px] text-indigo-300/60 text-center mt-2">Powered by Gemini Vision</p>
-                             </div>
+                            </div>
 
                             <div>
                                 <h4 className="text-xs font-bold uppercase text-slate-500 tracking-wider mb-2">Custom Edit</h4>
                                 <div className="relative">
-                                    <textarea 
-                                        className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-sm text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none resize-none h-28 transition-colors placeholder:text-slate-600" 
-                                        placeholder='Describe changes... e.g., "Fix the tear on the top right corner", "Make the cancellation mark clearer"' 
-                                        value={aiPrompt} 
-                                        onChange={(e) => setAiPrompt(e.target.value)} 
+                                    <textarea
+                                        className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-sm text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none resize-none h-28 transition-colors placeholder:text-slate-600"
+                                        placeholder='Describe changes... e.g., "Fix the tear on the top right corner", "Make the cancellation mark clearer"'
+                                        value={aiPrompt}
+                                        onChange={(e) => setAiPrompt(e.target.value)}
                                     />
                                 </div>
-                                <button 
-                                    onClick={() => handleAiEdit()} 
-                                    disabled={!aiPrompt.trim() || isAiProcessing} 
+                                <button
+                                    onClick={() => handleAiEdit()}
+                                    disabled={!aiPrompt.trim() || isAiProcessing}
                                     className="w-full mt-2 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-semibold disabled:opacity-50 shadow transition"
                                 >
                                     {isAiProcessing ? 'Processing...' : 'Generate Edit'}
                                 </button>
                             </div>
-                         </div>
+                        </div>
                     )}
                 </div>
             </div>
