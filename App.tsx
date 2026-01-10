@@ -8,6 +8,7 @@ import BatchProcessor from './components/BatchProcessor';
 import ImageEditor from './components/ImageEditor';
 import DuplicateReview from './components/DuplicateReview'; // New
 import { identifyAndValueStamp, analyzeCollectionVideo } from './services/geminiService';
+import { getAllStamps, saveStamp, deleteStamp, getAllCollections, saveCollections } from './services/db';
 import type { Stamp, StampData, SortBy, SortOrder, AppSettings, AppView, Collection } from './types';
 import Loader from './components/Loader';
 
@@ -78,6 +79,28 @@ const App: React.FC = () => {
     checkKey();
   }, []);
 
+  // Load persisted data on mount
+  useEffect(() => {
+    async function loadData() {
+      try {
+        const [persistedStamps, persistedCollections] = await Promise.all([
+          getAllStamps(),
+          getAllCollections()
+        ]);
+        if (persistedStamps.length > 0) setStamps(persistedStamps);
+        if (persistedCollections.length > 0) setCollections(persistedCollections);
+      } catch (e) {
+        console.error("Failed to load persisted data:", e);
+      }
+    }
+    loadData();
+  }, []);
+
+  // Persist collections whenever they change
+  useEffect(() => {
+    saveCollections(collections);
+  }, [collections]);
+
   const handleOpenKeySelector = async () => {
     const aistudio = (window as any).aistudio;
     if (aistudio) {
@@ -90,7 +113,8 @@ const App: React.FC = () => {
 
   const handleAddCollection = () => {
     if (!newCollectionName.trim()) return;
-    setCollections(prev => [...prev, { id: Date.now().toString(), name: newCollectionName }]);
+    const newCollections = [...collections, { id: Date.now().toString(), name: newCollectionName }];
+    setCollections(newCollections);
     setNewCollectionName('');
   };
 
@@ -128,7 +152,7 @@ const App: React.FC = () => {
           const newStamp: Stamp = {
             ...newStampData,
             id: newId,
-            imageUrl: URL.createObjectURL(file),
+            imageUrl: reader.result as string, // Persistence: Save as base64 data URL
             duplicateOf: possibleDuplicate ? possibleDuplicate.id : undefined,
             similarityScore: possibleDuplicate ? 0.85 : 0
           };
@@ -141,6 +165,7 @@ const App: React.FC = () => {
           }
 
           setStamps(prevStamps => [newStamp, ...prevStamps]);
+          saveStamp(newStamp); // Persist
         } catch (apiError) {
           if (apiError instanceof Error) {
             if (apiError.message.includes("Requested entity was not found.")) {
@@ -194,26 +219,38 @@ const App: React.FC = () => {
 
   const handleBatchProcessed = (newStamps: Stamp[]) => {
     setStamps(prev => [...newStamps, ...prev]);
+    // Persist each new stamp
+    newStamps.forEach(s => saveStamp(s));
   };
 
   const handleRemoveStamp = (id: number) => {
     setStamps(prevStamps => prevStamps.filter(stamp => stamp.id !== id));
+    deleteStamp(id); // Persist
   };
 
   const handleUpdateStamp = useCallback((id: number, updatedData: Partial<StampData>) => {
-    setStamps(prevStamps =>
-      prevStamps.map(stamp =>
+    setStamps(prevStamps => {
+      const newStamps = prevStamps.map(stamp =>
         stamp.id === id ? { ...stamp, ...updatedData } as Stamp : stamp
-      )
-    );
+      );
+      const updatedStamp = newStamps.find(s => s.id === id);
+      if (updatedStamp) saveStamp(updatedStamp); // Persist
+      return newStamps;
+    });
   }, []);
 
   const handleDuplicateResolve = (keepId: number, removeId: number) => {
     setStamps(prev => prev.filter(s => s.id !== removeId));
+    deleteStamp(removeId); // Persist
   };
 
   const handleDuplicateIgnore = (duplicateId: number) => {
-    setStamps(prev => prev.map(s => s.id === duplicateId ? { ...s, duplicateOf: undefined } : s));
+    setStamps(prev => {
+      const newStamps = prev.map(s => s.id === duplicateId ? { ...s, duplicateOf: undefined } : s);
+      const updated = newStamps.find(s => s.id === duplicateId);
+      if (updated) saveStamp(updated); // Persist
+      return newStamps;
+    });
   };
 
   const handleDiscardAllDuplicates = () => {
@@ -234,17 +271,18 @@ const App: React.FC = () => {
       const duplicate = prev.find(s => s.id === duplicateId);
       if (!original || !duplicate) return prev;
 
-      // Merge logic: Keep original ID and image, but overwrite metadata with new scan (duplicate)
       const merged: Stamp = {
         ...original,
-        ...duplicate, // Overwrite properties with new data
-        id: original.id, // FORCE keep original ID
-        imageUrl: original.imageUrl, // Keep original Image
+        ...duplicate,
+        id: original.id,
+        imageUrl: original.imageUrl,
         duplicateOf: undefined,
         similarityScore: undefined
       };
 
-      // Remove duplicate, update original in place
+      saveStamp(merged); // Persist update
+      deleteStamp(duplicateId); // Persist removal
+
       return prev
         .filter(s => s.id !== duplicateId)
         .map(s => s.id === originalId ? merged : s);
@@ -253,7 +291,12 @@ const App: React.FC = () => {
 
   const handleDuplicateReplace = (originalId: number, duplicateId: number) => {
     setStamps(prev => {
-      // Remove original, keep duplicate but clean it up
+      const updated = prev.find(s => s.id === duplicateId);
+      if (updated) {
+        const cleaned = { ...updated, duplicateOf: undefined };
+        saveStamp(cleaned); // Persist
+      }
+      deleteStamp(originalId); // Persist
       return prev
         .filter(s => s.id !== originalId)
         .map(s => s.id === duplicateId ? { ...s, duplicateOf: undefined } : s);
@@ -288,15 +331,17 @@ const App: React.FC = () => {
 
     setStamps(prev => {
       const original = prev.find(s => s.id === editingImageId);
-      if (!original) return prev;
-
-      const variant: Stamp = {
-        ...original,
-        id: Date.now(),
-        name: `${original.name} (Edited)`,
-        imageUrl: newImageUrl
-      };
-      return [variant, ...prev];
+      if (original) {
+        const variant: Stamp = {
+          ...original,
+          id: Date.now(),
+          name: `${original.name} (Edited)`,
+          imageUrl: newImageUrl
+        };
+        saveStamp(variant); // Persist
+        return [variant, ...prev];
+      }
+      return prev;
     });
     setEditingImageId(null);
   };
