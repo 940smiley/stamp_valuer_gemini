@@ -76,7 +76,7 @@ const getOAuthToken = (clientId: string): Promise<string> => {
         };
 
         // Skip prompt if we have a valid token (handled by GIS automatically mostly, but we can hint)
-        tokenClient.requestAccessToken({ prompt: '' });
+        tokenClient.requestAccessToken({ prompt: 'consent' });
     });
 };
 
