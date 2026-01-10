@@ -467,6 +467,7 @@ const App: React.FC = () => {
               <StampLog
                 stamps={sortedStamps}
                 collections={collections}
+                settings={settings}
                 onRemove={handleRemoveStamp}
                 onUpdate={handleUpdateStamp}
                 onRescan={handleRescanStamp}

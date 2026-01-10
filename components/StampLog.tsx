@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import type { Stamp, StampData, SortBy, SortOrder, Collection } from '../types';
+import type { Stamp, StampData, SortBy, SortOrder, Collection, AppSettings } from '../types';
 import StampCard from './StampCard';
 import SortControls from './SortControls';
 import { exportToGoogleDrive } from '../services/googleService';
@@ -18,11 +18,12 @@ interface StampLogProps {
     sortOrder: SortOrder;
     onSortByChange: (sortBy: SortBy) => void;
     onSortOrderChange: () => void;
+    settings: AppSettings;
 }
 
 const StampLog: React.FC<StampLogProps> = ({
     stamps, collections, onRemove, onUpdate, onRescan, onEditImage,
-    sortBy, sortOrder, onSortByChange, onSortOrderChange
+    sortBy, sortOrder, onSortByChange, onSortOrderChange, settings
 }) => {
     const [search, setSearch] = useState('');
     const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
@@ -632,6 +633,7 @@ const StampLog: React.FC<StampLogProps> = ({
                 {isEbayListing && (
                     <EbayLister
                         stamps={selectedStampsForListing}
+                        settings={settings}
                         onClose={() => setIsEbayListing(false)}
                     />
                 )}

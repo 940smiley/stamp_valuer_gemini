@@ -91,6 +91,21 @@ function getAiClient(customKey?: string) {
     return new GoogleGenAI({ apiKey: key });
 }
 
+function parseJsonResponse(text: string): any {
+    let jsonString = text.trim();
+    if (jsonString.startsWith('```json')) {
+        jsonString = jsonString.replace(/^```json\n?/, '').replace(/\n?```$/, '');
+    } else if (jsonString.startsWith('```')) {
+        jsonString = jsonString.replace(/^```\n?/, '').replace(/\n?```$/, '');
+    }
+    try {
+        return JSON.parse(jsonString);
+    } catch (e) {
+        console.error("JSON Parse Error. Raw text:", text);
+        throw new Error("AI returned invalid JSON: " + (e as Error).message);
+    }
+}
+
 export async function identifyAndValueStamp(
     base64Image: string,
     settings: AppSettings,
@@ -145,14 +160,7 @@ Output JSON.` },
             config: config,
         });
 
-        let jsonString = response.text.trim();
-        if (jsonString.startsWith('```json')) {
-            jsonString = jsonString.replace(/^```json\n/, '').replace(/\n```$/, '');
-        } else if (jsonString.startsWith('```')) {
-            jsonString = jsonString.replace(/^```\n/, '').replace(/\n```$/, '');
-        }
-
-        const stampData = JSON.parse(jsonString) as StampData;
+        const stampData = parseJsonResponse(response.text) as StampData;
 
         const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
         if (groundingChunks) {
@@ -262,7 +270,7 @@ export async function verifyDuplicate(image1Base64: string, image2Base64: string
             }
         });
 
-        const res = JSON.parse(response.text);
+        const res = parseJsonResponse(response.text);
         return { isDuplicate: res.isDuplicate, score: res.similarityScore, notes: res.notes };
     } catch (e) {
         console.error("Duplicate check failed", e);
@@ -270,22 +278,28 @@ export async function verifyDuplicate(image1Base64: string, image2Base64: string
     }
 }
 
-export async function generateEbayListing(stamp: Stamp, customKey?: string): Promise<any> {
-    const ai = getAiClient(customKey);
+export async function generateEbayListing(stamps: Stamp[], settings: AppSettings): Promise<any> {
+    const ai = getAiClient(settings.geminiApiKey);
     try {
+        const isLot = stamps.length > 1;
+        const stampContext = stamps.map((s, i) => `STAMP ${i + 1}: ${JSON.stringify(s)}`).join('\n');
+
         const response = await ai.models.generateContent({
             model: 'gemini-3-flash-preview',
             contents: {
                 parts: [
                     {
-                        text: `Create an optimized eBay listing for this stamp.
-                   Stamp Data: ${JSON.stringify(stamp)}
+                        text: `Create an optimized eBay listing for ${isLot ? `a LOT of ${stamps.length} stamps` : 'this stamp'}.
+                   Data:
+                   ${stampContext}
                    
                    Requirements:
-                   1. Title: Max 80 characters. Keywords: Country, Year, Catalog #, Condition.
-                   2. Description: HTML format. Professional tone. Highlight condition and rarity.
-                   3. Item Specifics: Key-Value pairs for eBay (e.g. "Year of Issue", "Quality", "Grade").
-                   4. Price: Suggest a competitive starting bid based on the estimated value.
+                   1. Title: Max 80 characters. Keywords: Country, Year, Catalog #, Condition. ${isLot ? 'MUST include word "LOT".' : ''}
+                   2. Description: HTML format. Professional tone. Highlight condition and rarity. ${isLot ? 'Summarize all items.' : ''}
+                   3. Item Specifics: Key-Value pairs for eBay (e.g. "Year of Issue", "Quality", "Grade", "Number of Items").
+                   4. Price: Suggest a competitive starting bid or Buy It Now price based on ${isLot ? 'the combined' : 'the'} estimated value.
+                   
+                   Output JSON.
                    ` }
                 ]
             },
@@ -295,7 +309,7 @@ export async function generateEbayListing(stamp: Stamp, customKey?: string): Pro
             }
         });
 
-        return JSON.parse(response.text);
+        return parseJsonResponse(response.text);
     } catch (error) {
         console.error("Listing Generation Failed", error);
         throw error;
