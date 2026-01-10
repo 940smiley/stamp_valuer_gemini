@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: write
-  workflows: write
 
 jobs:
   lint-and-fix:
@@ -38,9 +37,9 @@ jobs:
         with:
           commit_message: "chore: auto-fix linting and formatting issues"
           branch: ${{ github.head_ref }}
+          file_pattern: ':! .github/workflows/*'
 
       - name: Fallback Notification
         if: failure()
         run: |
           echo "Auto-fix failed. Please check the logs and apply fixes manually."
-          # Here we could add a GH CLI command to comment on the PR if TOKEN is provided
