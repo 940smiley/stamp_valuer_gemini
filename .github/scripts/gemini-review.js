@@ -10,8 +10,8 @@ const REPO_OWNER = process.env.REPO_OWNER;
 const REPO_NAME = process.env.REPO_NAME;
 
 if (!GEMINI_API_KEY) {
-    console.error("Error: GEMINI_API_KEY is missing.");
-    process.exit(1);
+    console.warn("Warning: GEMINI_API_KEY is missing. Skipping code review.");
+    process.exit(0);
 }
 
 async function getPRDiff() {
