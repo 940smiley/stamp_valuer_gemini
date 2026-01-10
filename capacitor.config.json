@@ -1,6 +1,9 @@
+
 {
   "appId": "com.stamplicity.app",
   "appName": "Stamplicity",
   "webDir": "dist",
-  "bundledWebRuntime": false
+  "server": {
+    "androidScheme": "https"
+  }
 }

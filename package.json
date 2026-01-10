@@ -1,3 +1,4 @@
+
 {
   "name": "stamplicity",
   "private": true,
@@ -8,36 +9,22 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "start": "node server.js",
-    "cap:sync": "cap sync",
-    "cap:build": "npm run build && npx cap sync",
-    "lint": "eslint . --ext .ts,.tsx"
+    "start": "node server.js"
   },
   "dependencies": {
     "@google/genai": "^1.19.0",
-    "express": "^5.2.1",
+    "express": "^4.19.2",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "@capacitor/core": "^6.0.0",
-    "@capacitor/android": "^6.0.0",
-    "@capacitor/ios": "^6.0.0"
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "@types/node": "^20.12.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "@vitejs/plugin-react": "^5.1.2",
+    "@vitejs/plugin-react": "^4.2.1",
     "autoprefixer": "^10.4.19",
     "postcss": "^8.4.38",
-    "tailwindcss": "^4.1.18",
-    "typescript": "^5.9.3",
-    "vite": "^7.3.1",
-    "@capacitor/cli": "^6.0.0",
-    "vite-plugin-pwa": "^1.2.0",
-    "eslint": "^9.0.0",
-    "@typescript-eslint/eslint-plugin": "^7.0.0",
-    "@typescript-eslint/parser": "^7.0.0",
-    "eslint-plugin-react": "^7.34.0",
-    "eslint-plugin-react-hooks": "^4.6.0"
+    "tailwindcss": "^3.4.3",
+    "typescript": "^5.4.5",
+    "vite": "^5.2.11"
   }
 }

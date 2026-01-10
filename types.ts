@@ -10,7 +10,7 @@ export interface StampData {
   tags?: string[];
   isRejected?: boolean;
   sources?: { uri: string; title: string }[];
-
+  
   // Advanced Philatelic Data
   catalogNumber?: string;
   alternateCatalogNumbers?: string[];
@@ -26,19 +26,18 @@ export interface StampData {
   colorShade?: string;
   overprint?: string;
   plateFlaw?: string;
-
+  
   // Confidence Metrics
   confidenceBreakdown?: {
-    identification: number;
-    condition: number;
-    valuation: number;
+      identification: number;
+      condition: number;
+      valuation: number;
   };
 
   // Duplicate / Inventory Info
   duplicateOf?: number; // ID of the original stamp
   similarityScore?: number;
   verificationNotes?: string[];
-  aiNotes?: string;
 }
 
 export interface Stamp extends StampData {
@@ -62,7 +61,7 @@ export interface AppSettings {
   ebayDevId?: string;
   ebayCertId?: string;
   ebayOAuthToken?: string;
-
+  
   // Social & Privacy
   facebookPageId?: string;
   facebookAccessToken?: string;
@@ -71,15 +70,14 @@ export interface AppSettings {
   // Google Integration
   googleClientId?: string;
   googleDeveloperKey?: string;
-
+  
   // AI Settings
   useThinkingMode: boolean;
   useSearchGrounding: boolean;
   modelQuality: 'fast' | 'pro';
-  geminiApiKey?: string;
 }
 
-export type AppView = 'dashboard' | 'collection' | 'batch' | 'settings' | 'duplicates';
+export type AppView = 'dashboard' | 'batch' | 'settings' | 'duplicates' | 'googlePhotos';
 
 export interface BatchItem {
   id: string;

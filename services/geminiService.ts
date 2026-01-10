@@ -27,7 +27,7 @@ const stampSchema = {
         auctionType: { type: Type.STRING, description: 'Singular vs Lot Auction.' },
         justification: { type: Type.STRING, description: 'Reason for auction type.' },
         verificationNotes: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'AI notes on authenticity, condition quirks, or identification reasoning.' },
-        confidenceBreakdown: {
+        confidenceBreakdown: { 
             type: Type.OBJECT,
             properties: {
                 identification: { type: Type.NUMBER },
@@ -65,54 +65,37 @@ const duplicateSchema = {
 };
 
 const ebayListingSchema = {
-    type: Type.OBJECT,
-    properties: {
-        title: { type: Type.STRING, description: "SEO optimized eBay title." },
-        description: { type: Type.STRING, description: "HTML description." },
-        itemSpecifics: {
-            type: Type.ARRAY,
-            items: {
-                type: Type.OBJECT,
-                properties: {
-                    Name: { type: Type.STRING },
-                    Value: { type: Type.STRING }
-                }
-            }
-        },
-        suggestedPrice: { type: Type.NUMBER },
-        categoryId: { type: Type.STRING }
+  type: Type.OBJECT,
+  properties: {
+    title: { type: Type.STRING, description: "SEO optimized eBay title." },
+    description: { type: Type.STRING, description: "HTML description." },
+    itemSpecifics: { 
+      type: Type.ARRAY, 
+      items: { 
+        type: Type.OBJECT, 
+        properties: { 
+            Name: { type: Type.STRING }, 
+            Value: { type: Type.STRING } 
+        } 
+      } 
     },
-    required: ['title', 'description', 'itemSpecifics', 'suggestedPrice']
+    suggestedPrice: { type: Type.NUMBER },
+    categoryId: { type: Type.STRING }
+  },
+  required: ['title', 'description', 'itemSpecifics', 'suggestedPrice']
 };
 
 
-function getAiClient(customKey?: string) {
-    const key = customKey || import.meta.env.VITE_GEMINI_API_KEY || process.env.API_KEY || (window as any).process?.env?.API_KEY;
-    return new GoogleGenAI({ apiKey: key });
-}
-
-function parseJsonResponse(text: string): any {
-    let jsonString = text.trim();
-    if (jsonString.startsWith('```json')) {
-        jsonString = jsonString.replace(/^```json\n?/, '').replace(/\n?```$/, '');
-    } else if (jsonString.startsWith('```')) {
-        jsonString = jsonString.replace(/^```\n?/, '').replace(/\n?```$/, '');
-    }
-    try {
-        return JSON.parse(jsonString);
-    } catch (e) {
-        console.error("JSON Parse Error. Raw text:", text);
-        throw new Error("AI returned invalid JSON: " + (e as Error).message);
-    }
+function getAiClient() {
+    return new GoogleGenAI({ apiKey: process.env.API_KEY });
 }
 
 export async function identifyAndValueStamp(
-    base64Image: string,
-    settings: AppSettings,
-    userNotes?: string
+    base64Image: string, 
+    settings: AppSettings
 ): Promise<StampData> {
-    const ai = getAiClient(settings.geminiApiKey);
-
+    const ai = getAiClient();
+    
     try {
         let model = 'gemini-flash-latest';
         if (settings.modelQuality === 'pro' || settings.useThinkingMode) {
@@ -140,8 +123,7 @@ export async function identifyAndValueStamp(
             contents: {
                 parts: [
                     { inlineData: { mimeType: 'image/jpeg', data: base64Image } },
-                    {
-                        text: `Analyze this philatelic item with expert precision.
+                    { text: `Analyze this philatelic item with expert precision.
                     
 1.  **Strictly Classify Item Type**: Identify if this is a standard "stamp", "block" (multiples), "cover" (envelope), "fdc" (First Day Cover), "pane", "clipping" (stamp on paper piece), or "stationery".
 2.  **Identification**: Country, Year, Face Value, Series.
@@ -150,9 +132,7 @@ export async function identifyAndValueStamp(
 5.  **Condition**: Grade it (Mint NH, Hinged, Used, VF, F, etc.). Look for faults.
 6.  **Valuation**: Estimate market value based on similar sold items.
 7.  **Meta**: Image side and rotation angle.
-8.  **Verification Notes**: Provide 1-3 short bullet points explaining WHY you identified it this way or noting specific condition issues.
-
-${userNotes ? `USER NOTES / CONTEXT: "${userNotes}". Take these notes into account for identification.` : ''}
+8.  **Verification Notes**: Provide 1-3 short bullet points explaining WHY you identified it this way or noting specific condition issues (e.g. "Short perf at top", "Cancel obscures value").
 
 Output JSON.` },
                 ],
@@ -160,7 +140,14 @@ Output JSON.` },
             config: config,
         });
 
-        const stampData = parseJsonResponse(response.text) as StampData;
+        let jsonString = response.text.trim();
+        if (jsonString.startsWith('```json')) {
+            jsonString = jsonString.replace(/^```json\n/, '').replace(/\n```$/, '');
+        } else if (jsonString.startsWith('```')) {
+            jsonString = jsonString.replace(/^```\n/, '').replace(/\n```$/, '');
+        }
+
+        const stampData = JSON.parse(jsonString) as StampData;
 
         const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
         if (groundingChunks) {
@@ -168,7 +155,7 @@ Output JSON.` },
                 .map((chunk: any) => chunk.web ? { uri: chunk.web.uri, title: chunk.web.title } : null)
                 .filter((s: any): s is { uri: string; title: string } => !!s && !!s.uri);
         }
-
+        
         return stampData;
 
     } catch (error) {
@@ -177,16 +164,15 @@ Output JSON.` },
     }
 }
 
-export async function analyzeCollectionVideo(base64Video: string, mimeType: string, customKey?: string): Promise<any> {
-    const ai = getAiClient(customKey);
+export async function analyzeCollectionVideo(base64Video: string, mimeType: string): Promise<any> {
+    const ai = getAiClient();
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-3-pro-preview',
             contents: {
                 parts: [
                     { inlineData: { mimeType: mimeType, data: base64Video } },
-                    {
-                        text: `Analyze this video of a stamp collection. 
+                    { text: `Analyze this video of a stamp collection. 
                     1. Estimate the total count of distinct stamps visible.
                     2. Identify the main countries or regions represented.
                     3. List any potential high-value or notable sets/issues seen.
@@ -200,7 +186,7 @@ export async function analyzeCollectionVideo(base64Video: string, mimeType: stri
                 responseSchema: videoAnalysisSchema
             }
         });
-
+        
         return JSON.parse(response.text);
     } catch (error) {
         console.error("Video Analysis Error:", error);
@@ -208,8 +194,8 @@ export async function analyzeCollectionVideo(base64Video: string, mimeType: stri
     }
 }
 
-export async function editStampImage(base64Image: string, prompt: string, customKey?: string): Promise<string> {
-    const ai = getAiClient(customKey);
+export async function editStampImage(base64Image: string, prompt: string): Promise<string> {
+    const ai = getAiClient();
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash-image',
@@ -233,27 +219,26 @@ export async function editStampImage(base64Image: string, prompt: string, custom
     }
 }
 
-export async function checkIsPhilatelic(base64Image: string, customKey?: string): Promise<boolean> {
-    const ai = getAiClient(customKey);
+export async function checkIsPhilatelic(base64Image: string): Promise<boolean> {
+    const ai = getAiClient();
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-flash-lite-latest',
             contents: {
                 parts: [
                     { inlineData: { mimeType: 'image/jpeg', data: base64Image } },
-                    { text: 'Analyze this image. Is it a postage stamp, a revenue stamp, or a first day cover? Return "TRUE" if it is any of these, or "FALSE" if it is anything else (like a coin, banknote, or random object). Answer ONLY "TRUE" or "FALSE".' }
+                    { text: 'Is this a stamp/cover? Answer ONLY "TRUE" or "FALSE".' }
                 ]
             }
         });
-        const result = response.text.trim().toUpperCase();
-        return result.includes('TRUE');
+        return response.text.trim().toUpperCase().includes('TRUE');
     } catch (e) {
         return false;
     }
 }
 
-export async function verifyDuplicate(image1Base64: string, image2Base64: string, customKey?: string): Promise<{ isDuplicate: boolean; score: number; notes: string[] }> {
-    const ai = getAiClient(customKey);
+export async function verifyDuplicate(image1Base64: string, image2Base64: string): Promise<{ isDuplicate: boolean; score: number; notes: string[] }> {
+    const ai = getAiClient();
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-3-flash-preview',
@@ -269,8 +254,8 @@ export async function verifyDuplicate(image1Base64: string, image2Base64: string
                 responseSchema: duplicateSchema
             }
         });
-
-        const res = parseJsonResponse(response.text);
+        
+        const res = JSON.parse(response.text);
         return { isDuplicate: res.isDuplicate, score: res.similarityScore, notes: res.notes };
     } catch (e) {
         console.error("Duplicate check failed", e);
@@ -278,28 +263,21 @@ export async function verifyDuplicate(image1Base64: string, image2Base64: string
     }
 }
 
-export async function generateEbayListing(stamps: Stamp[], settings: AppSettings): Promise<any> {
-    const ai = getAiClient(settings.geminiApiKey);
+export async function generateEbayListing(stamp: Stamp): Promise<any> {
+    const ai = getAiClient();
     try {
-        const isLot = stamps.length > 1;
-        const stampContext = stamps.map((s, i) => `STAMP ${i + 1}: ${JSON.stringify(s)}`).join('\n');
-
         const response = await ai.models.generateContent({
             model: 'gemini-3-flash-preview',
             contents: {
                 parts: [
-                    {
-                        text: `Create an optimized eBay listing for ${isLot ? `a LOT of ${stamps.length} stamps` : 'this stamp'}.
-                   Data:
-                   ${stampContext}
+                   { text: `Create an optimized eBay listing for this stamp.
+                   Stamp Data: ${JSON.stringify(stamp)}
                    
                    Requirements:
-                   1. Title: Max 80 characters. Keywords: Country, Year, Catalog #, Condition. ${isLot ? 'MUST include word "LOT".' : ''}
-                   2. Description: HTML format. Professional tone. Highlight condition and rarity. ${isLot ? 'Summarize all items.' : ''}
-                   3. Item Specifics: Key-Value pairs for eBay (e.g. "Year of Issue", "Quality", "Grade", "Number of Items").
-                   4. Price: Suggest a competitive starting bid or Buy It Now price based on ${isLot ? 'the combined' : 'the'} estimated value.
-                   
-                   Output JSON.
+                   1. Title: Max 80 characters. Keywords: Country, Year, Catalog #, Condition.
+                   2. Description: HTML format. Professional tone. Highlight condition and rarity.
+                   3. Item Specifics: Key-Value pairs for eBay (e.g. "Year of Issue", "Quality", "Grade").
+                   4. Price: Suggest a competitive starting bid based on the estimated value.
                    ` }
                 ]
             },
@@ -309,7 +287,7 @@ export async function generateEbayListing(stamps: Stamp[], settings: AppSettings
             }
         });
 
-        return parseJsonResponse(response.text);
+        return JSON.parse(response.text);
     } catch (error) {
         console.error("Listing Generation Failed", error);
         throw error;

@@ -12,7 +12,7 @@ export const verifyEbayConnection = async (apiKey: string, token: string): Promi
 };
 
 export interface EbayListingDraft {
-    stampIds: number[];
+    stampId: number;
     title: string;
     description: string;
     price: number;
@@ -31,5 +31,5 @@ export const postBulkListings = async (listings: EbayListingDraft[]): Promise<{ 
 
 export const getEbayCategorySuggestion = async (query: string): Promise<string> => {
     // Mock category ID for Stamps
-    return "260";
+    return "260"; 
 };

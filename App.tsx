@@ -4,16 +4,13 @@ import Header from './components/Header';
 import StampUploader from './components/StampUploader';
 import StampLog from './components/StampLog';
 import SettingsPanel from './components/SettingsPanel';
-import BatchProcessor from './components/BatchProcessor';
+import CloudDashboard from './components/CloudDashboard';
 import ImageEditor from './components/ImageEditor';
-import DuplicateReview from './components/DuplicateReview'; // New
+import DuplicateReview from './components/DuplicateReview';
 import { identifyAndValueStamp, analyzeCollectionVideo } from './services/geminiService';
-import { getAllStamps, saveStamp, deleteStamp, getAllCollections, saveCollections } from './services/db';
+import { searchFile, readFile, createFile, updateFile, isGoogleConnected } from './services/googleService';
 import type { Stamp, StampData, SortBy, SortOrder, AppSettings, AppView, Collection } from './types';
 import Loader from './components/Loader';
-
-// Removed conflicting global declaration
-// If window.aistudio exists in the environment, we access it safely using casting.
 
 const App: React.FC = () => {
   const [activeView, setActiveView] = useState<AppView>('dashboard');
@@ -36,21 +33,19 @@ const App: React.FC = () => {
   // Image Editing State
   const [editingImageId, setEditingImageId] = useState<number | null>(null);
 
-  const videoInputRef = useRef<HTMLInputElement>(null);
+  // Cloud Sync State
+  const [isDriveSyncEnabled, setIsDriveSyncEnabled] = useState(false);
+  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
+  const [driveFileId, setDriveFileId] = useState<string | null>(null);
 
   const [settings, setSettings] = useState<AppSettings>(() => {
     const saved = localStorage.getItem('stamp-valuer-settings');
-    // Combine saved settings with baked-in defaults for credentials if they are missing
     const defaultSettings = {
-      // eBay Production Credentials (Recovered treasure)
-      ebayApiKey: import.meta.env.VITE_EBAY_API_KEY || '', // App ID
+      ebayApiKey: import.meta.env.VITE_EBAY_API_KEY || '',
       ebayDevId: import.meta.env.VITE_EBAY_DEV_ID || '',
-      ebayCertId: import.meta.env.VITE_EBAY_CERT_ID || '', // Client Secret
-
-      // Google Credentials (Stamplicity)
+      ebayCertId: import.meta.env.VITE_EBAY_CERT_ID || '',
       googleClientId: import.meta.env.VITE_GOOGLE_CLIENT_ID || '',
       googleDeveloperKey: import.meta.env.VITE_GOOGLE_DEVELOPER_KEY || '',
-      geminiApiKey: '',
       useThinkingMode: false,
       useSearchGrounding: true,
       modelQuality: 'fast' as const
@@ -58,7 +53,6 @@ const App: React.FC = () => {
 
     if (saved) {
       const parsed = JSON.parse(saved);
-      // Ensure defaults populate if saved settings are missing specific keys
       return { ...defaultSettings, ...parsed };
     }
     return defaultSettings;
@@ -79,33 +73,66 @@ const App: React.FC = () => {
     checkKey();
   }, []);
 
-  // Load persisted data on mount
+  // Drive Sync Initialization
   useEffect(() => {
-    async function loadData() {
-      try {
-        const [persistedStamps, persistedCollections] = await Promise.all([
-          getAllStamps(),
-          getAllCollections()
-        ]);
-        if (persistedStamps.length > 0) setStamps(persistedStamps);
-        if (persistedCollections.length > 0) setCollections(persistedCollections);
-      } catch (e) {
-        console.error("Failed to load persisted data:", e);
+    const initSync = async () => {
+      if (isDriveSyncEnabled && isGoogleConnected()) {
+        setIsLoading(true);
+        try {
+          const DB_FILE = 'stamplicity_collection.json';
+          let fileId = await searchFile(DB_FILE);
+          if (fileId) {
+            // Load from Drive
+            const data = await readFile(fileId);
+            if (data && Array.isArray(data)) {
+              setStamps(data);
+              setDriveFileId(fileId);
+              setLastSyncTime(new Date());
+            }
+          } else {
+            // Create new file with current stamps
+            fileId = await createFile(DB_FILE, stamps);
+            setDriveFileId(fileId);
+            setLastSyncTime(new Date());
+          }
+        } catch (e) {
+          console.error("Sync Init Error", e);
+          setError("Failed to initialize Google Drive sync.");
+          setIsDriveSyncEnabled(false);
+        } finally {
+          setIsLoading(false);
+        }
       }
-    }
-    loadData();
-  }, []);
+    };
 
-  // Persist collections whenever they change
+    // Only run if toggled on from off
+    if (isDriveSyncEnabled && !driveFileId) {
+      initSync();
+    }
+  }, [isDriveSyncEnabled, driveFileId]); // Dependencies imply simple toggle logic
+
+  // Auto-Save to Drive Logic
   useEffect(() => {
-    saveCollections(collections);
-  }, [collections]);
+    if (!isDriveSyncEnabled || !driveFileId) return;
+
+    const timeout = setTimeout(async () => {
+      try {
+        const success = await updateFile(driveFileId, stamps);
+        if (success) {
+          setLastSyncTime(new Date());
+        }
+      } catch (e) {
+        console.error("Auto-save failed", e);
+      }
+    }, 5000); // Debounce save every 5 seconds
+
+    return () => clearTimeout(timeout);
+  }, [stamps, isDriveSyncEnabled, driveFileId]);
 
   const handleOpenKeySelector = async () => {
     const aistudio = (window as any).aistudio;
     if (aistudio) {
       await aistudio.openSelectKey();
-      // Re-check key status after selection interaction
       const hasKey = await aistudio.hasSelectedApiKey();
       setHasApiKey(hasKey);
     }
@@ -113,8 +140,7 @@ const App: React.FC = () => {
 
   const handleAddCollection = () => {
     if (!newCollectionName.trim()) return;
-    const newCollections = [...collections, { id: Date.now().toString(), name: newCollectionName }];
-    setCollections(newCollections);
+    setCollections(prev => [...prev, { id: Date.now().toString(), name: newCollectionName }]);
     setNewCollectionName('');
   };
 
@@ -141,31 +167,22 @@ const App: React.FC = () => {
 
           const newId = Date.now();
 
-          // Simple Client-side Duplicate Check (Basic Name/Country Match)
           const possibleDuplicate = stamps.find(s =>
             s.name === newStampData.name &&
             s.country === newStampData.country &&
             s.year === newStampData.year &&
-            !s.duplicateOf // Don't match against something already marked duplicate
+            !s.duplicateOf
           );
 
           const newStamp: Stamp = {
             ...newStampData,
             id: newId,
-            imageUrl: reader.result as string, // Persistence: Save as base64 data URL
+            imageUrl: URL.createObjectURL(file),
             duplicateOf: possibleDuplicate ? possibleDuplicate.id : undefined,
             similarityScore: possibleDuplicate ? 0.85 : 0
           };
 
-          const isPremium = false; // Placeholder for premium status check
-          if (!isPremium && stamps.length >= 10) {
-            setError("Logging limit reached. Free accounts are limited to 10 objects. Please upgrade to premium to add more.");
-            setIsLoading(false);
-            return;
-          }
-
           setStamps(prevStamps => [newStamp, ...prevStamps]);
-          saveStamp(newStamp); // Persist
         } catch (apiError) {
           if (apiError instanceof Error) {
             if (apiError.message.includes("Requested entity was not found.")) {
@@ -219,65 +236,36 @@ const App: React.FC = () => {
 
   const handleBatchProcessed = (newStamps: Stamp[]) => {
     setStamps(prev => [...newStamps, ...prev]);
-    // Persist each new stamp
-    newStamps.forEach(s => saveStamp(s));
   };
 
   const handleRemoveStamp = (id: number) => {
     setStamps(prevStamps => prevStamps.filter(stamp => stamp.id !== id));
-    deleteStamp(id); // Persist
   };
 
   const handleUpdateStamp = useCallback((id: number, updatedData: Partial<StampData>) => {
-    setStamps(prevStamps => {
-      const newStamps = prevStamps.map(stamp =>
+    setStamps(prevStamps =>
+      prevStamps.map(stamp =>
         stamp.id === id ? { ...stamp, ...updatedData } as Stamp : stamp
-      );
-      const updatedStamp = newStamps.find(s => s.id === id);
-      if (updatedStamp) saveStamp(updatedStamp); // Persist
-      return newStamps;
-    });
+      )
+    );
   }, []);
-
-  const handleRescanStamp = useCallback(async (id: number, notes?: string) => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const stamp = stamps.find(s => s.id === id);
-      if (!stamp) throw new Error("Stamp not found");
-      const base64Image = stamp.imageUrl.split(',')[1];
-      const updatedData = await identifyAndValueStamp(base64Image, settings, notes);
-
-      handleUpdateStamp(id, { ...updatedData, aiNotes: notes });
-    } catch (e: any) {
-      setError("Rescan failed: " + e.message);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [stamps, settings, handleUpdateStamp]);
 
   const handleDuplicateResolve = (keepId: number, removeId: number) => {
     setStamps(prev => prev.filter(s => s.id !== removeId));
-    deleteStamp(removeId); // Persist
   };
 
   const handleDuplicateIgnore = (duplicateId: number) => {
-    setStamps(prev => {
-      const newStamps = prev.map(s => s.id === duplicateId ? { ...s, duplicateOf: undefined } : s);
-      const updated = newStamps.find(s => s.id === duplicateId);
-      if (updated) saveStamp(updated); // Persist
-      return newStamps;
-    });
+    setStamps(prev => prev.map(s => s.id === duplicateId ? { ...s, duplicateOf: undefined } : s));
   };
 
   const handleDiscardAllDuplicates = () => {
-    if (window.confirm("Are you sure you want to discard all detected duplicates? This will delete the newly scanned items that are marked as duplicates.")) {
+    if (window.confirm("Are you sure you want to discard all detected duplicates?")) {
       setStamps(prev => prev.filter(s => !s.duplicateOf));
     }
   };
 
   const handleIgnoreAllDuplicates = () => {
-    if (window.confirm("Are you sure you want to keep all duplicates as separate items? This will remove the duplicate warning from all items.")) {
+    if (window.confirm("Are you sure you want to keep all duplicates as separate items?")) {
       setStamps(prev => prev.map(s => s.duplicateOf ? { ...s, duplicateOf: undefined, similarityScore: undefined } : s));
     }
   };
@@ -297,9 +285,6 @@ const App: React.FC = () => {
         similarityScore: undefined
       };
 
-      saveStamp(merged); // Persist update
-      deleteStamp(duplicateId); // Persist removal
-
       return prev
         .filter(s => s.id !== duplicateId)
         .map(s => s.id === originalId ? merged : s);
@@ -308,12 +293,6 @@ const App: React.FC = () => {
 
   const handleDuplicateReplace = (originalId: number, duplicateId: number) => {
     setStamps(prev => {
-      const updated = prev.find(s => s.id === duplicateId);
-      if (updated) {
-        const cleaned = { ...updated, duplicateOf: undefined };
-        saveStamp(cleaned); // Persist
-      }
-      deleteStamp(originalId); // Persist
       return prev
         .filter(s => s.id !== originalId)
         .map(s => s.id === duplicateId ? { ...s, duplicateOf: undefined } : s);
@@ -341,24 +320,21 @@ const App: React.FC = () => {
     return newStamps;
   }, [stamps, sortBy, sortOrder]);
 
-  // Image Editing Handlers
   const handleSaveEditedImage = (newBase64: string) => {
     if (!editingImageId) return;
     const newImageUrl = `data:image/jpeg;base64,${newBase64}`;
 
     setStamps(prev => {
       const original = prev.find(s => s.id === editingImageId);
-      if (original) {
-        const variant: Stamp = {
-          ...original,
-          id: Date.now(),
-          name: `${original.name} (Edited)`,
-          imageUrl: newImageUrl
-        };
-        saveStamp(variant); // Persist
-        return [variant, ...prev];
-      }
-      return prev;
+      if (!original) return prev;
+
+      const variant: Stamp = {
+        ...original,
+        id: Date.now(),
+        name: `${original.name} (Edited)`,
+        imageUrl: newImageUrl
+      };
+      return [variant, ...prev];
     });
     setEditingImageId(null);
   };
@@ -372,7 +348,7 @@ const App: React.FC = () => {
           </div>
           <h1 className="text-2xl font-bold mb-4 text-slate-800">API Key Selection Required</h1>
           <p className="mb-6 text-slate-600 text-sm">
-            This application requires a Google Gemini API key from a paid GCP project to access advanced AI models like Gemini 3 Pro.
+            This application requires a Google Gemini API key from a paid GCP project.
           </p>
           <button onClick={handleOpenKeySelector} className="w-full bg-blue-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-blue-700 transition shadow-md">
             Open Key Selector
@@ -392,15 +368,17 @@ const App: React.FC = () => {
       <div className="bg-white border-b border-slate-200 sticky top-0 z-20 shadow-sm overflow-x-auto">
         <nav className="container mx-auto px-4 md:px-8 flex space-x-6 min-w-max">
           <button onClick={() => setActiveView('dashboard')} className={`py-4 px-2 border-b-2 font-semibold text-sm transition ${activeView === 'dashboard' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>Dashboard</button>
-          <button onClick={() => setActiveView('batch')} className={`py-4 px-2 border-b-2 font-semibold text-sm transition ${activeView === 'batch' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>Batch Processor</button>
+          <button onClick={() => setActiveView('googlePhotos')} className={`py-4 px-2 border-b-2 font-semibold text-sm transition ${activeView === 'googlePhotos' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
+            Cloud & Sync
+            {isDriveSyncEnabled && <span className="ml-2 inline-block w-2 h-2 rounded-full bg-green-500"></span>}
+          </button>
           <button onClick={() => setActiveView('duplicates')} className={`py-4 px-2 border-b-2 font-semibold text-sm transition flex items-center ${activeView === 'duplicates' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
             Duplicates
             {duplicateCount > 0 && <span className="ml-2 bg-red-100 text-red-600 text-xs px-2 py-0.5 rounded-full font-bold">{duplicateCount}</span>}
           </button>
-          <button onClick={() => setActiveView('collection')} className={`py-4 px-2 border-b-2 font-semibold text-sm transition ${activeView === 'collection' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>My Collection</button>
           <button onClick={() => setActiveView('settings')} className={`py-4 px-2 border-b-2 font-semibold text-sm transition ${activeView === 'settings' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>Settings</button>
 
-          {/* Quick Collection Add & Video Upload */}
+          {/* Quick Collection Add */}
           <div className="flex items-center ml-auto gap-2">
             <div className="flex items-center">
               <input
@@ -413,28 +391,6 @@ const App: React.FC = () => {
               />
               <button onClick={handleAddCollection} className="text-xs bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold px-2 py-1.5 rounded-r border border-l-0 border-slate-300">+</button>
             </div>
-
-            <div className="h-6 w-px bg-slate-200 mx-1"></div>
-
-            <button
-              onClick={() => videoInputRef.current?.click()}
-              className="flex items-center gap-1.5 text-xs bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200 px-3 py-1.5 rounded transition font-semibold"
-              title="Analyze Collection Video"
-            >
-              <svg className="w-3.5 h-3.5 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-              Analyze Video
-            </button>
-            <input
-              type="file"
-              ref={videoInputRef}
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) handleVideoAnalysis(file);
-                e.target.value = ''; // Reset
-              }}
-              accept="video/*"
-              hidden
-            />
           </div>
         </nav>
       </div>
@@ -443,34 +399,33 @@ const App: React.FC = () => {
         <div className="max-w-6xl mx-auto">
           {activeView === 'dashboard' && (
             <div className="space-y-8">
-              <div className="bg-white rounded-xl shadow-lg p-6 md:p-8 border border-slate-200">
-                <h2 className="text-2xl font-bold text-slate-800 mb-4">Analyze Single Stamp or Video</h2>
+              <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
+                <h2 className="text-2xl font-bold text-slate-800 p-6 pb-0">Media Analysis</h2>
                 {isLoading ? (
-                  <div className="flex flex-col items-center justify-center h-48 bg-slate-50 rounded-lg">
+                  <div className="flex flex-col items-center justify-center h-64 bg-slate-50">
                     <Loader />
-                    <p className="mt-4 text-slate-600 text-center max-w-md">
+                    <p className="mt-4 text-slate-600 text-center max-w-md font-medium">
                       AI is analyzing media...<br />
-                      <span className="text-sm text-slate-400">Large videos may take a minute to process using Gemini Pro Vision.</span>
+                      <span className="text-sm text-slate-400 font-normal">Gemini Pro Vision is examining the details.</span>
                     </p>
                   </div>
                 ) : (
-                  <StampUploader onImageUpload={handleStampAnalysis} onVideoUpload={handleVideoAnalysis} />
+                  <StampUploader
+                    onImageUpload={handleStampAnalysis}
+                    onVideoUpload={handleVideoAnalysis}
+                    onBatchProcessed={handleBatchProcessed}
+                    settings={settings}
+                  />
                 )}
 
-                {error && <div className="mt-4 text-red-600 bg-red-100 p-3 rounded-md border border-red-200">{error}</div>}
+                {error && <div className="m-6 mt-0 text-red-600 bg-red-100 p-3 rounded-md border border-red-200 text-sm">{error}</div>}
               </div>
-            </div>
-          )}
 
-          {activeView === 'collection' && (
-            <div className="space-y-8">
               <StampLog
                 stamps={sortedStamps}
                 collections={collections}
-                settings={settings}
                 onRemove={handleRemoveStamp}
                 onUpdate={handleUpdateStamp}
-                onRescan={handleRescanStamp}
                 onEditImage={setEditingImageId}
                 sortBy={sortBy}
                 sortOrder={sortOrder}
@@ -539,7 +494,18 @@ const App: React.FC = () => {
             </div>
           )}
 
-          {activeView === 'batch' && <BatchProcessor settings={settings} onProcessed={handleBatchProcessed} />}
+          {activeView === 'googlePhotos' && (
+            <CloudDashboard
+              settings={settings}
+              onBatchProcessed={handleBatchProcessed}
+              onToggleSync={(val) => {
+                setIsDriveSyncEnabled(val);
+                if (!val) { setDriveFileId(null); setLastSyncTime(null); }
+              }}
+              isSyncEnabled={isDriveSyncEnabled}
+              lastSyncTime={lastSyncTime}
+            />
+          )}
 
           {activeView === 'duplicates' && (
             <DuplicateReview
@@ -553,25 +519,20 @@ const App: React.FC = () => {
             />
           )}
 
-          {activeView === 'settings' && (
-            <SettingsPanel settings={settings} onUpdate={setSettings} />
-          )}
+          {activeView === 'settings' && <SettingsPanel settings={settings} onUpdate={setSettings} />}
         </div>
       </main>
 
       {/* Image Editor Modal */}
-      {
-        editingImageId && editingStamp && (
-          <ImageEditor
-            imageSrc={editingStamp.imageUrl}
-            suggestedRotation={editingStamp.suggestedRotation}
-            geminiApiKey={settings.geminiApiKey}
-            onSave={handleSaveEditedImage}
-            onCancel={() => setEditingImageId(null)}
-          />
-        )
-      }
-    </div >
+      {editingImageId && editingStamp && (
+        <ImageEditor
+          imageSrc={editingStamp.imageUrl}
+          suggestedRotation={editingStamp.suggestedRotation}
+          onSave={handleSaveEditedImage}
+          onCancel={() => setEditingImageId(null)}
+        />
+      )}
+    </div>
   );
 };
 
