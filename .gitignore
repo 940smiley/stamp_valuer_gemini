@@ -11,6 +11,11 @@ dist
 build
 
 # Credentials and Secrets
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 GITHUB-TOKEN.txt
 ebay-developer-api.txt
 google-ai-gemini-api-key.txt
@@ -18,4 +23,3 @@ client_secret_*.json
 *.txt
 *.jpeg
 ai-config.json
-.env.local
