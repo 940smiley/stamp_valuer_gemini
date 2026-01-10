@@ -49,7 +49,7 @@ const App: React.FC = () => {
       // Google Credentials (Stamplicity)
       googleClientId: import.meta.env.VITE_GOOGLE_CLIENT_ID || '',
       googleDeveloperKey: import.meta.env.VITE_GOOGLE_DEVELOPER_KEY || '',
-
+      geminiApiKey: '',
       useThinkingMode: false,
       useSearchGrounding: true,
       modelQuality: 'fast' as const
@@ -335,6 +335,7 @@ const App: React.FC = () => {
             Duplicates
             {duplicateCount > 0 && <span className="ml-2 bg-red-100 text-red-600 text-xs px-2 py-0.5 rounded-full font-bold">{duplicateCount}</span>}
           </button>
+          <button onClick={() => setActiveView('collection')} className={`py-4 px-2 border-b-2 font-semibold text-sm transition ${activeView === 'collection' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>My Collection</button>
           <button onClick={() => setActiveView('settings')} className={`py-4 px-2 border-b-2 font-semibold text-sm transition ${activeView === 'settings' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>Settings</button>
 
           {/* Quick Collection Add & Video Upload */}
@@ -396,7 +397,11 @@ const App: React.FC = () => {
 
                 {error && <div className="mt-4 text-red-600 bg-red-100 p-3 rounded-md border border-red-200">{error}</div>}
               </div>
+            </div>
+          )}
 
+          {activeView === 'collection' && (
+            <div className="space-y-8">
               <StampLog
                 stamps={sortedStamps}
                 collections={collections}
@@ -409,7 +414,6 @@ const App: React.FC = () => {
                 onSortOrderChange={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
               />
 
-              {/* Video Analysis Result Section - Below StampLog */}
               {videoResult && (
                 <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-lg mt-8 animate-fade-in">
                   <button
@@ -468,7 +472,6 @@ const App: React.FC = () => {
                   )}
                 </div>
               )}
-
             </div>
           )}
 
@@ -486,20 +489,24 @@ const App: React.FC = () => {
             />
           )}
 
-          {activeView === 'settings' && <SettingsPanel settings={settings} onUpdate={setSettings} />}
+          {activeView === 'settings' && (
+            <SettingsPanel settings={settings} onUpdate={setSettings} />
+          )}
         </div>
       </main>
 
       {/* Image Editor Modal */}
-      {editingImageId && editingStamp && (
-        <ImageEditor
-          imageSrc={editingStamp.imageUrl}
-          suggestedRotation={editingStamp.suggestedRotation}
-          onSave={handleSaveEditedImage}
-          onCancel={() => setEditingImageId(null)}
-        />
-      )}
-    </div>
+      {
+        editingImageId && editingStamp && (
+          <ImageEditor
+            imageSrc={editingStamp.imageUrl}
+            suggestedRotation={editingStamp.suggestedRotation}
+            onSave={handleSaveEditedImage}
+            onCancel={() => setEditingImageId(null)}
+          />
+        )
+      }
+    </div >
   );
 };
 

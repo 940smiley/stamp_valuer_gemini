@@ -27,7 +27,7 @@ const stampSchema = {
         auctionType: { type: Type.STRING, description: 'Singular vs Lot Auction.' },
         justification: { type: Type.STRING, description: 'Reason for auction type.' },
         verificationNotes: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'AI notes on authenticity, condition quirks, or identification reasoning.' },
-        confidenceBreakdown: { 
+        confidenceBreakdown: {
             type: Type.OBJECT,
             properties: {
                 identification: { type: Type.NUMBER },
@@ -65,44 +65,45 @@ const duplicateSchema = {
 };
 
 const ebayListingSchema = {
-  type: Type.OBJECT,
-  properties: {
-    title: { type: Type.STRING, description: "SEO optimized eBay title." },
-    description: { type: Type.STRING, description: "HTML description." },
-    itemSpecifics: { 
-      type: Type.ARRAY, 
-      items: { 
-        type: Type.OBJECT, 
-        properties: { 
-            Name: { type: Type.STRING }, 
-            Value: { type: Type.STRING } 
-        } 
-      } 
+    type: Type.OBJECT,
+    properties: {
+        title: { type: Type.STRING, description: "SEO optimized eBay title." },
+        description: { type: Type.STRING, description: "HTML description." },
+        itemSpecifics: {
+            type: Type.ARRAY,
+            items: {
+                type: Type.OBJECT,
+                properties: {
+                    Name: { type: Type.STRING },
+                    Value: { type: Type.STRING }
+                }
+            }
+        },
+        suggestedPrice: { type: Type.NUMBER },
+        categoryId: { type: Type.STRING }
     },
-    suggestedPrice: { type: Type.NUMBER },
-    categoryId: { type: Type.STRING }
-  },
-  required: ['title', 'description', 'itemSpecifics', 'suggestedPrice']
+    required: ['title', 'description', 'itemSpecifics', 'suggestedPrice']
 };
 
 
-function getAiClient() {
-    return new GoogleGenAI({ apiKey: process.env.API_KEY });
+function getAiClient(customKey?: string) {
+    const key = customKey || import.meta.env.VITE_GEMINI_API_KEY || process.env.API_KEY || (window as any).process?.env?.API_KEY;
+    return new GoogleGenAI({ apiKey: key });
 }
 
 export async function identifyAndValueStamp(
-    base64Image: string, 
+    base64Image: string,
     settings: AppSettings
 ): Promise<StampData> {
-    const ai = getAiClient();
-    
+    const ai = getAiClient(settings.geminiApiKey);
+
     try {
-        let model = 'gemini-flash-latest';
+        let model = 'gemini-1.5-flash';
         if (settings.modelQuality === 'pro' || settings.useThinkingMode) {
-            model = 'gemini-3-pro-preview';
+            model = 'gemini-1.5-pro';
         }
         if (settings.useSearchGrounding) {
-            model = 'gemini-3-pro-image-preview';
+            model = 'gemini-1.5-pro';
         }
 
         const config: any = {
@@ -123,7 +124,8 @@ export async function identifyAndValueStamp(
             contents: {
                 parts: [
                     { inlineData: { mimeType: 'image/jpeg', data: base64Image } },
-                    { text: `Analyze this philatelic item with expert precision.
+                    {
+                        text: `Analyze this philatelic item with expert precision.
                     
 1.  **Strictly Classify Item Type**: Identify if this is a standard "stamp", "block" (multiples), "cover" (envelope), "fdc" (First Day Cover), "pane", "clipping" (stamp on paper piece), or "stationery".
 2.  **Identification**: Country, Year, Face Value, Series.
@@ -155,7 +157,7 @@ Output JSON.` },
                 .map((chunk: any) => chunk.web ? { uri: chunk.web.uri, title: chunk.web.title } : null)
                 .filter((s: any): s is { uri: string; title: string } => !!s && !!s.uri);
         }
-        
+
         return stampData;
 
     } catch (error) {
@@ -168,11 +170,12 @@ export async function analyzeCollectionVideo(base64Video: string, mimeType: stri
     const ai = getAiClient();
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-3-pro-preview',
+            model: 'gemini-1.5-pro',
             contents: {
                 parts: [
                     { inlineData: { mimeType: mimeType, data: base64Video } },
-                    { text: `Analyze this video of a stamp collection. 
+                    {
+                        text: `Analyze this video of a stamp collection. 
                     1. Estimate the total count of distinct stamps visible.
                     2. Identify the main countries or regions represented.
                     3. List any potential high-value or notable sets/issues seen.
@@ -186,7 +189,7 @@ export async function analyzeCollectionVideo(base64Video: string, mimeType: stri
                 responseSchema: videoAnalysisSchema
             }
         });
-        
+
         return JSON.parse(response.text);
     } catch (error) {
         console.error("Video Analysis Error:", error);
@@ -198,7 +201,7 @@ export async function editStampImage(base64Image: string, prompt: string): Promi
     const ai = getAiClient();
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash-image',
+            model: 'gemini-1.5-flash',
             contents: {
                 parts: [
                     { inlineData: { mimeType: 'image/jpeg', data: base64Image } },
@@ -223,7 +226,7 @@ export async function checkIsPhilatelic(base64Image: string): Promise<boolean> {
     const ai = getAiClient();
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-flash-lite-latest',
+            model: 'gemini-1.5-flash',
             contents: {
                 parts: [
                     { inlineData: { mimeType: 'image/jpeg', data: base64Image } },
@@ -241,7 +244,7 @@ export async function verifyDuplicate(image1Base64: string, image2Base64: string
     const ai = getAiClient();
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
+            model: 'gemini-1.5-flash',
             contents: {
                 parts: [
                     { inlineData: { mimeType: 'image/jpeg', data: image1Base64 } },
@@ -254,7 +257,7 @@ export async function verifyDuplicate(image1Base64: string, image2Base64: string
                 responseSchema: duplicateSchema
             }
         });
-        
+
         const res = JSON.parse(response.text);
         return { isDuplicate: res.isDuplicate, score: res.similarityScore, notes: res.notes };
     } catch (e) {
@@ -267,10 +270,11 @@ export async function generateEbayListing(stamp: Stamp): Promise<any> {
     const ai = getAiClient();
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
+            model: 'gemini-1.5-flash',
             contents: {
                 parts: [
-                   { text: `Create an optimized eBay listing for this stamp.
+                    {
+                        text: `Create an optimized eBay listing for this stamp.
                    Stamp Data: ${JSON.stringify(stamp)}
                    
                    Requirements:
