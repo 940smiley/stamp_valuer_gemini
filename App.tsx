@@ -239,6 +239,23 @@ const App: React.FC = () => {
     });
   }, []);
 
+  const handleRescanStamp = useCallback(async (id: number, notes?: string) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const stamp = stamps.find(s => s.id === id);
+      if (!stamp) throw new Error("Stamp not found");
+      const base64Image = stamp.imageUrl.split(',')[1];
+      const updatedData = await identifyAndValueStamp(base64Image, settings, notes);
+
+      handleUpdateStamp(id, { ...updatedData, aiNotes: notes });
+    } catch (e: any) {
+      setError("Rescan failed: " + e.message);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [stamps, settings, handleUpdateStamp]);
+
   const handleDuplicateResolve = (keepId: number, removeId: number) => {
     setStamps(prev => prev.filter(s => s.id !== removeId));
     deleteStamp(removeId); // Persist
@@ -452,6 +469,7 @@ const App: React.FC = () => {
                 collections={collections}
                 onRemove={handleRemoveStamp}
                 onUpdate={handleUpdateStamp}
+                onRescan={handleRescanStamp}
                 onEditImage={setEditingImageId}
                 sortBy={sortBy}
                 sortOrder={sortOrder}

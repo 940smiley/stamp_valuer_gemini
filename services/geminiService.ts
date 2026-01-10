@@ -93,7 +93,8 @@ function getAiClient(customKey?: string) {
 
 export async function identifyAndValueStamp(
     base64Image: string,
-    settings: AppSettings
+    settings: AppSettings,
+    userNotes?: string
 ): Promise<StampData> {
     const ai = getAiClient(settings.geminiApiKey);
 
@@ -134,7 +135,9 @@ export async function identifyAndValueStamp(
 5.  **Condition**: Grade it (Mint NH, Hinged, Used, VF, F, etc.). Look for faults.
 6.  **Valuation**: Estimate market value based on similar sold items.
 7.  **Meta**: Image side and rotation angle.
-8.  **Verification Notes**: Provide 1-3 short bullet points explaining WHY you identified it this way or noting specific condition issues (e.g. "Short perf at top", "Cancel obscures value").
+8.  **Verification Notes**: Provide 1-3 short bullet points explaining WHY you identified it this way or noting specific condition issues.
+
+${userNotes ? `USER NOTES / CONTEXT: "${userNotes}". Take these notes into account for identification.` : ''}
 
 Output JSON.` },
                 ],

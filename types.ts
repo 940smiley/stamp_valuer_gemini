@@ -38,6 +38,7 @@ export interface StampData {
   duplicateOf?: number; // ID of the original stamp
   similarityScore?: number;
   verificationNotes?: string[];
+  aiNotes?: string;
 }
 
 export interface Stamp extends StampData {
